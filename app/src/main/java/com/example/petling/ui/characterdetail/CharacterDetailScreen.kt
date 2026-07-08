@@ -98,7 +98,9 @@ private fun StatusTab(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(Dimens.Space5))
+        Spacer(Modifier.height(Dimens.Space4))
+        AffectionGauge(character.affection)
+        Spacer(Modifier.height(Dimens.Space4))
         PetlingCard(modifier = Modifier.fillMaxWidth()) {
             // 성장(단계)은 모은 캡처가 구동한다 → 지표를 함께 노출해 성장 근거를 명확히.
             StatLine("모은 캡처", "${character.captureCount}개")
@@ -108,6 +110,29 @@ private fun StatusTab(
             StatLine("최고 연속", "${character.bestStreakDays}일")
             StatLine("오늘 컨디션", character.mood.displayName)
         }
+    }
+}
+
+/**
+ * 호감도 게이지: 하트 5개(20씩 부분 채움) + 단계명. 기질·원값은 숨기고 관계 단계만 보여준다.
+ */
+@Composable
+private fun AffectionGauge(affection: Int) {
+    val level = com.example.petling.domain.engine.AffectionRules.levelFor(affection)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        repeat(5) { i ->
+            val fill = ((affection - i * 20) / 20f).coerceIn(0f, 1f)
+            Text(
+                text = if (fill >= 0.75f) "❤️" else if (fill >= 0.25f) "🧡" else "🤍",
+                style = MaterialTheme.typography.titleMedium,
+            )
+        }
+        Spacer(Modifier.size(Dimens.Space2))
+        Text(
+            level.displayName,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
