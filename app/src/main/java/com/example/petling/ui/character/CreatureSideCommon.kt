@@ -32,6 +32,7 @@ internal fun DrawScope.drawSideLeg(
     color: Color,
     footColor: Color?,
     lod: Lod,
+    outline: Color? = null,
 ) {
     rotate(angleDeg, pivot = p(pivotX, pivotY)) {
         // 캡슐(둥근 끝 직사각형 근사: 타원)
@@ -40,6 +41,14 @@ internal fun DrawScope.drawSideLeg(
             topLeft = p(pivotX - thick / 2f, pivotY - thick * 0.3f),
             size = Size(d(thick), d(len + thick * 0.5f)),
         )
+        outline?.let {
+            drawOval(
+                it,
+                topLeft = p(pivotX - thick / 2f, pivotY - thick * 0.3f),
+                size = Size(d(thick), d(len + thick * 0.5f)),
+                style = outlineStroke(d, OUT_W_S),
+            )
+        }
         // 발끝
         if (lod == Lod.FULL && footColor != null) {
             drawOval(
@@ -103,6 +112,7 @@ internal fun DrawScope.drawQuadrupedCore(
     )
     path.close()
     drawPath(path, bodyBrush, style = Fill)
+    drawPath(path, palette.outline, style = outlineStroke(d))
     // 배 크림
     drawOval(
         palette.belly.copy(alpha = 0.85f),
@@ -110,13 +120,13 @@ internal fun DrawScope.drawQuadrupedCore(
         size = Size(d(sp.bodyHalfLen * 1.1f), d(sp.bodyHalfHt * 0.85f)),
     )
 
-    // 근측 다리(앞·뒤)
-    drawSideLeg(p, d, sp.shoulderX, sp.pivotY, sp.legLen, sp.legThick, angles[0], palette.body, palette.bodyShadow, lod)
-    drawSideLeg(p, d, sp.hipX, sp.pivotY, sp.legLen, sp.legThick, angles[1], palette.body, palette.bodyShadow, lod)
+    // 근측 다리(앞·뒤, 아웃라인)
+    drawSideLeg(p, d, sp.shoulderX, sp.pivotY, sp.legLen, sp.legThick, angles[0], palette.body, palette.bodyShadow, lod, palette.outline)
+    drawSideLeg(p, d, sp.hipX, sp.pivotY, sp.legLen, sp.legThick, angles[1], palette.body, palette.bodyShadow, lod, palette.outline)
 
-    // 머리(몸과 겹쳐 목 생략) + 하이라이트
+    // 머리(몸과 겹쳐 목 생략) + 아웃라인
     val headBob = -abs(sin(phi * 2f * PI)).toFloat() * gait.bobAmp
-    fillOval(p, d, sp.headCx, sp.headCy + headBob, sp.headR, sp.headR, vGrad(p, sp.headCx, sp.headCy, sp.headR, palette.bodyHighlight, palette.body))
+    outlinedOval(p, d, sp.headCx, sp.headCy + headBob, sp.headR, sp.headR, vGrad(p, sp.headCx, sp.headCy, sp.headR, palette.bodyHighlight, palette.body), palette.outline)
 }
 
 /** 2족 직립 코어(병아리·펭귄): 원측 다리 → 세로 몸통 → 근측 다리. 머리는 몸 상단에 붙음. */
@@ -133,12 +143,12 @@ internal fun DrawScope.drawBipedCore(
     val s = sin(phi * 2f * PI).toFloat() * gait.swingDeg
     val farColor = lerp(legColor, Color.Black, 0.25f)
     drawSideLeg(p, d, sp.bodyCx - 0.02f, sp.pivotY, sp.legLen, sp.legThick, -s, farColor, null, lod)
-    // 몸통(세로 캡슐)
-    fillOval(
+    // 몸통(세로 캡슐 + 아웃라인)
+    outlinedOval(
         p, d, sp.bodyCx, sp.bodyCy, sp.bodyHalfLen, sp.bodyHalfHt,
-        vGrad(p, sp.bodyCx, sp.bodyCy, sp.bodyHalfHt, palette.bodyHighlight, palette.body),
+        vGrad(p, sp.bodyCx, sp.bodyCy, sp.bodyHalfHt, palette.bodyHighlight, palette.body), palette.outline,
     )
-    drawSideLeg(p, d, sp.bodyCx + 0.015f, sp.pivotY, sp.legLen, sp.legThick, s, legColor, null, lod)
+    drawSideLeg(p, d, sp.bodyCx + 0.015f, sp.pivotY, sp.legLen, sp.legThick, s, legColor, null, lod, palette.outline)
 }
 
 /**

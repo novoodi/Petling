@@ -11,8 +11,13 @@ import kotlin.math.sin
 
 private val P_BEAK = Color(0xFFF2A03D)
 private val P_FEET = Color(0xFFE8933A)
+private val BROW_GOLD = Color(0xFFF2C14E)
 
-/** 펭귄 정면: 다크 슬레이트 몸 + 큰 흰 배 + 플리퍼 + 부리·주황 발. */
+/**
+ * 펭귄 "진지한 뒤뚱이".
+ * 실루엣: 유일한 직립 물방울 + 양옆 플리퍼 / 컬러: 네이비+화이트+주황 부리·발 /
+ * 시그니처: 노란 눈썹 깃털(로크호퍼).
+ */
 internal fun DrawScope.drawPenguin(
     p: (Float, Float) -> Offset,
     d: (Float) -> Float,
@@ -23,47 +28,67 @@ internal fun DrawScope.drawPenguin(
     lod: Lod,
 ) {
     val cx = 0.5f
+    val hr = prop.headR
+    val hc = prop.headCy
+    val breathe = 1f + motion.breathe * 0.012f
+    val top = hc - hr * 1.05f
+    val bot = prop.bodyCy + prop.bodyRy * 0.92f * breathe
+    val halfW = prop.bodyRx * 1.12f
 
-    drawMammalBody(p, d, palette, prop, motion)
-
-    // 큰 흰 배(얼굴 아래부터 몸 하단까지)
-    drawOval(
-        palette.belly,
-        topLeft = p(cx - prop.bodyRx * 0.52f, prop.headCy + prop.headR * 0.35f),
-        size = Size(d(prop.bodyRx * 1.04f), d((prop.bodyCy + prop.bodyRy * 0.85f) - (prop.headCy + prop.headR * 0.35f))),
-    )
-    // 얼굴 흰 패치(눈 주변)
+    // 주황 발(몸 아래 빼꼼)
     listOf(-1f, 1f).forEach { s ->
-        drawOval(
-            palette.belly.copy(alpha = 0.9f),
-            topLeft = p(cx + s * prop.headR * 0.42f - prop.headR * 0.3f, prop.headCy - prop.headR * 0.28f),
-            size = Size(d(prop.headR * 0.6f), d(prop.headR * 0.62f)),
-        )
+        outlinedOval(p, d, cx + s * halfW * 0.34f, bot + 0.012f, 0.042f, 0.017f, P_FEET, palette.outline, OUT_W_S)
     }
 
-    // 플리퍼(몸 옆 아래로)
-    val flap = sin(motion.tailWag * 2 * PI).toFloat() * 6f
+    // 플리퍼(몸 옆, 뒤): 아웃라인 타원, tailWag 위상으로 파닥
+    val flap = sin(motion.tailWag * 2 * PI).toFloat() * pose.tailWagAmp * 5f
+    val flipY = bot - (bot - top) * 0.42f
     listOf(-1f, 1f).forEach { s ->
-        rotate(s * (18f + flap), pivot = p(cx + s * prop.bodyRx * 0.85f, prop.bodyCy - prop.bodyRy * 0.35f)) {
-            drawOval(
-                palette.bodyShadow,
-                topLeft = p(cx + s * prop.bodyRx * 0.85f - 0.035f, prop.bodyCy - prop.bodyRy * 0.4f),
-                size = Size(d(0.07f), d(prop.bodyRy * 0.95f)),
-            )
+        rotate(s * (24f + flap), pivot = p(cx + s * halfW * 0.88f, flipY - prop.bodyRy * 0.35f)) {
+            outlinedOval(p, d, cx + s * halfW * 0.88f, flipY, 0.033f, prop.bodyRy * 0.62f, palette.body, palette.outline, OUT_W_S)
         }
     }
 
-    // 부리(다이아몬드)
-    val beakCy = prop.headCy + prop.headR * 0.42f
-    val bw = prop.headR * 0.15f
-    triangle(p(cx - bw, beakCy), p(cx + bw, beakCy), p(cx, beakCy - prop.headR * 0.12f), P_BEAK)
-    triangle(p(cx - bw, beakCy), p(cx + bw, beakCy), p(cx, beakCy + prop.headR * 0.13f), P_BEAK)
+    // 직립 물방울 몸통(네이비)
+    drawEggBody(p, d, top, bot, halfW, vGrad(p, cx, (top + bot) / 2f, (bot - top) / 2f, palette.bodyHighlight, palette.body), palette.outline)
 
-    // 주황 발
-    val fy = prop.bodyCy + prop.bodyRy * 0.9f
+    // 큰 흰 배(면 마킹)
+    val bellyTop = hc + hr * 0.38f
+    fillOval(p, d, cx, (bellyTop + bot - 0.015f) / 2f, halfW * 0.64f, (bot - 0.015f - bellyTop) / 2f, palette.belly)
+
+    // 눈 흰자(다크 몸 위에서 눈이 보이도록 — drawFace가 이 위에 홍채를 얹음)
+    val eyeCy = hc + prop.eyeY * hr
+    val gap = prop.eyeGap * hr
+    val eyeR = hr * 0.30f * prop.eyeScale
     listOf(-1f, 1f).forEach { s ->
-        drawOval(P_FEET, topLeft = p(cx + s * prop.bodyRx * 0.3f - 0.035f, fy - 0.012f), size = Size(d(0.07f), d(0.032f)))
+        fillOval(p, d, cx + s * gap, eyeCy, eyeR * 1.30f, eyeR * 1.45f, palette.belly)
     }
+
+    // 노란 눈썹 깃털(시그니처)
+    listOf(-1f, 1f).forEach { s ->
+        drawLine(
+            BROW_GOLD,
+            p(cx + s * gap * 0.75f, eyeCy - eyeR * 1.8f),
+            p(cx + s * (gap + eyeR * 1.6f), eyeCy - eyeR * 2.6f),
+            strokeWidth = d(0.014f),
+        )
+        drawLine(
+            BROW_GOLD.copy(alpha = 0.8f),
+            p(cx + s * gap * 0.85f, eyeCy - eyeR * 1.55f),
+            p(cx + s * (gap + eyeR * 1.75f), eyeCy - eyeR * 1.9f),
+            strokeWidth = d(0.010f),
+        )
+    }
+
+    // 부리(주황 다이아몬드 + 아웃라인)
+    val beakCy = hc + hr * 0.44f
+    val bw = hr * 0.17f
+    val beak = scratchPath()
+    val l = p(cx - bw, beakCy); val r = p(cx + bw, beakCy)
+    val t = p(cx, beakCy - hr * 0.13f); val b = p(cx, beakCy + hr * 0.14f)
+    beak.moveTo(l.x, l.y); beak.lineTo(t.x, t.y); beak.lineTo(r.x, r.y); beak.lineTo(b.x, b.y); beak.close()
+    drawPath(beak, P_BEAK)
+    drawPath(beak, palette.outline, style = outlineStroke(d, OUT_W_S))
 }
 
 /** 펭귄 옆모습(뒤뚱 보행): 직립 몸 + 흰 배 + 플리퍼 + 두 발 교차, 몸 롤은 렌더러 tilt. */
@@ -90,13 +115,20 @@ internal fun DrawScope.drawPenguinSide(
         size = Size(d(sp.bodyHalfLen * 1.05f), d(sp.bodyHalfHt * 1.5f)),
     )
 
-    // 머리(몸 상단과 한 덩어리)
-    fillOval(p, d, sp.headCx, sp.headCy, sp.headR, sp.headR, vGrad(p, sp.headCx, sp.headCy, sp.headR, palette.bodyHighlight, palette.body))
+    // 머리(몸 상단과 한 덩어리 + 아웃라인)
+    outlinedOval(p, d, sp.headCx, sp.headCy, sp.headR, sp.headR, vGrad(p, sp.headCx, sp.headCy, sp.headR, palette.bodyHighlight, palette.body), palette.outline)
     // 얼굴 흰 패치
     drawOval(
         palette.belly.copy(alpha = 0.9f),
         topLeft = p(sp.headCx + sp.headR * 0.05f, sp.headCy - sp.headR * 0.3f),
         size = Size(d(sp.headR * 0.65f), d(sp.headR * 0.7f)),
+    )
+    // 노란 눈썹 깃털
+    drawLine(
+        BROW_GOLD,
+        p(sp.headCx + sp.headR * 0.25f, sp.headCy - sp.headR * 0.45f),
+        p(sp.headCx - sp.headR * 0.25f, sp.headCy - sp.headR * 0.85f),
+        strokeWidth = d(0.012f),
     )
 
     // 플리퍼(근측, 걸음 반동으로 살짝 흔들)
@@ -115,7 +147,7 @@ internal fun DrawScope.drawPenguinSide(
         p(sp.headCx + sp.headR * 0.55f, by - sp.headR * 0.12f),
         p(sp.headCx + sp.headR * 0.55f, by + sp.headR * 0.10f),
         p(sp.headCx + sp.headR * 1.1f, by),
-        P_BEAK,
+        P_BEAK, palette.outline, d,
     )
 
     drawSideFace(p, d, palette, sp.headCx, sp.headCy, sp.headR, pose, irisFor(Species.PENGUIN, palette), eyeStyle, blink, lod)
