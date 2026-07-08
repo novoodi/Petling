@@ -171,13 +171,25 @@ fun CaptureDetailScreen(captureId: Long, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            // 인식된 원문은 기본으로 숨긴다(화면 정돈). 복사가 필요할 때만 펼쳐 본다.
             if (c.ocrText.isNotBlank()) {
                 Spacer(Modifier.height(Dimens.Space4))
-                Text("인식된 텍스트", style = MaterialTheme.typography.labelMedium)
-                Spacer(Modifier.height(Dimens.Space2))
-                PetlingCard(modifier = Modifier.fillMaxWidth()) {
-                    SelectionContainer {
-                        Text(c.ocrText, style = MaterialTheme.typography.bodyMedium)
+                var showOcr by remember(c.id) { mutableStateOf(false) }
+                Text(
+                    if (showOcr) "인식된 원문 접기 ▲" else "인식된 원문 보기 ▼",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextTertiary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(Dimens.RadiusSm))
+                        .clickable { showOcr = !showOcr }
+                        .padding(vertical = Dimens.Space1),
+                )
+                if (showOcr) {
+                    Spacer(Modifier.height(Dimens.Space2))
+                    PetlingCard(modifier = Modifier.fillMaxWidth()) {
+                        SelectionContainer {
+                            Text(c.ocrText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
