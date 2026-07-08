@@ -32,7 +32,7 @@ class CanvasCharacterRenderer : CharacterRenderer {
 
     @Composable
     override fun Render(spec: CharacterSpec, modifier: Modifier) {
-        val palette = ModoriPalette.from(spec.colorHue)
+        val palette = ModoriPalette.from(spec.colorHue, spec.species)
         val transition = rememberInfiniteTransition(label = "creature")
 
         // 숨쉬기(위아래 부유 + 몸 팽창)

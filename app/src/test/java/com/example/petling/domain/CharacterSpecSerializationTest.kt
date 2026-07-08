@@ -36,6 +36,15 @@ class CharacterSpecSerializationTest {
     }
 
     @Test
+    fun new_species_round_trip() {
+        listOf(Species.DOG, Species.HAMSTER, Species.PENGUIN, Species.PANDA).forEach { sp ->
+            val spec = CharacterSpec(stage = GrowthStage.JUVENILE, species = sp)
+            val decoded = json.decodeFromString<CharacterSpec>(json.encodeToString(spec))
+            assertEquals(sp, decoded.species)
+        }
+    }
+
+    @Test
     fun walk_spec_round_trips() {
         val spec = CharacterSpec(
             stage = GrowthStage.GROWTH2,

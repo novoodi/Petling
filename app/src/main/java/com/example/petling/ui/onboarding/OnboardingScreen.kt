@@ -193,7 +193,7 @@ private fun SpeciesStep(onSelect: (com.example.petling.domain.model.Species) -> 
             horizontalArrangement = Arrangement.spacedBy(Dimens.Space3, Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(Dimens.Space3),
         ) {
-            com.example.petling.domain.model.Species.entries.forEach { species ->
+            com.example.petling.domain.model.Species.entries.filter { it.pickable }.forEach { species ->
                 SpeciesCard(species, onClick = { onSelect(species) })
             }
         }
@@ -202,7 +202,7 @@ private fun SpeciesStep(onSelect: (com.example.petling.domain.model.Species) -> 
 
 @Composable
 private fun SpeciesCard(species: com.example.petling.domain.model.Species, onClick: () -> Unit) {
-    val palette = ModoriPalette.from(species.defaultHue)
+    val palette = ModoriPalette.from(species.defaultHue, species)
     Column(
         modifier = Modifier
             .size(width = 100.dp, height = 128.dp)
@@ -242,7 +242,7 @@ private fun HatchStep(species: com.example.petling.domain.model.Species, colorHu
     ) {
         Text("알을 톡톡 두드려 깨워보세요", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(Dimens.Space8))
-        val palette = ModoriPalette.from(colorHue)
+        val palette = ModoriPalette.from(colorHue, species)
         Canvas(
             modifier = Modifier
                 .size(220.dp)
@@ -318,7 +318,7 @@ private fun NamingStep(vm: OnboardingViewModel, state: OnboardingUiState) {
         Spacer(Modifier.height(Dimens.Space6))
         Text("${state.determinedPersonality?.displayName} 친구네요!", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(Dimens.Space4))
-        val palette = ModoriPalette.from(state.colorHue)
+        val palette = ModoriPalette.from(state.colorHue, state.species)
         Canvas(modifier = Modifier.size(160.dp)) {
             drawCreature(
                 species = state.species,

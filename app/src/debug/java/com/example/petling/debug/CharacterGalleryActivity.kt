@@ -26,6 +26,8 @@ import com.example.petling.domain.model.Expression
 import com.example.petling.domain.model.GrowthStage
 import com.example.petling.domain.model.Mood
 import com.example.petling.domain.model.Species
+import com.example.petling.ui.character.CreatureMotion
+import com.example.petling.ui.character.CreatureView
 import com.example.petling.ui.character.ModoriPalette
 import com.example.petling.ui.character.drawCreature
 
@@ -96,9 +98,36 @@ private fun Gallery() {
         }
 
         Header("작은 크기(72dp) 판독")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             Species.entries.forEach { sp ->
                 Cell(sp, GrowthStage.MATURE, null, Mood.CALM, Expression.HAPPY, sp.defaultHue, 0, 72)
+            }
+        }
+
+        Header("옆모습 보행 (성숙기, walkCycle 0.25)")
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Species.entries.filter { it != Species.ACORN }.forEach { sp ->
+                CellLabeled(sp.displayName, sp, GrowthStage.MATURE, null, Mood.CALM, Expression.NEUTRAL, sp.defaultHue, 0, 108, side = true, walk = 0.25f)
+            }
+        }
+
+        Header("걷기 사이클 (강아지: 0 / 0.25 / 0.5 / 0.75)")
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(0f, 0.25f, 0.5f, 0.75f).forEach { phi ->
+                CellLabeled("$phi", Species.DOG, GrowthStage.MATURE, null, Mood.CALM, Expression.NEUTRAL, Species.DOG.defaultHue, 0, 108, side = true, walk = phi)
+            }
+        }
+
+        Header("걷기 사이클 (토끼 홉: 0 / 0.2 / 0.4 / 0.7)")
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(0f, 0.2f, 0.4f, 0.7f).forEach { phi ->
+                CellLabeled("$phi", Species.RABBIT, GrowthStage.MATURE, null, Mood.CALM, Expression.NEUTRAL, Species.RABBIT.defaultHue, 0, 108, side = true, walk = phi)
             }
         }
     }
@@ -111,17 +140,27 @@ private fun moodFor(ex: Expression): Mood = when (ex) {
 }
 
 @Composable
-private fun Cell(sp: Species, st: GrowthStage, br: Branch?, mood: Mood, ex: Expression, hue: Float, eye: Int, dp: Int) {
-    val palette = ModoriPalette.from(hue)
+private fun Cell(
+    sp: Species, st: GrowthStage, br: Branch?, mood: Mood, ex: Expression, hue: Float, eye: Int, dp: Int,
+    side: Boolean = false, walk: Float = 0f,
+) {
+    val palette = ModoriPalette.from(hue, sp)
     Canvas(modifier = Modifier.size(dp.dp).background(Color(0xFFFBF9F4))) {
-        drawCreature(sp, st, br, mood, ex, palette, eye, blink = 0f)
+        drawCreature(
+            sp, st, br, mood, ex, palette, eye, blink = 0f,
+            motion = CreatureMotion(walkCycle = walk),
+            view = if (side) CreatureView.SIDE else CreatureView.FRONT,
+        )
     }
 }
 
 @Composable
-private fun CellLabeled(label: String, sp: Species, st: GrowthStage, br: Branch?, mood: Mood, ex: Expression, hue: Float, eye: Int, dp: Int) {
+private fun CellLabeled(
+    label: String, sp: Species, st: GrowthStage, br: Branch?, mood: Mood, ex: Expression, hue: Float, eye: Int, dp: Int,
+    side: Boolean = false, walk: Float = 0f,
+) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Cell(sp, st, br, mood, ex, hue, eye, dp)
+        Cell(sp, st, br, mood, ex, hue, eye, dp, side, walk)
         Text(label, fontSize = 10.sp)
     }
 }

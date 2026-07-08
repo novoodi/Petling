@@ -71,12 +71,24 @@ fun proportionsFor(species: Species, stage: GrowthStage): Proportions {
     val (earLen, earW, earFold) = earSpec(species, i)
     val muzzle = muzzleSpec(species, i)
     val (tailLen, tailThick) = tailSpec(species, i)
+    val bodyRxMul = when (species) {
+        Species.CHICK, Species.PENGUIN -> 0.92f
+        Species.HAMSTER -> 1.10f
+        Species.PANDA -> 1.12f
+        else -> 1f
+    }
+    val bodyRyMul = when (species) {
+        Species.CHICK, Species.PENGUIN -> 1.05f
+        Species.HAMSTER -> 0.98f
+        Species.PANDA -> 1.05f
+        else -> 1f
+    }
     return Proportions(
         scale = SCALE[i],
-        headR = HEAD_R[i] * if (species == Species.CHICK) 0.95f else 1f,
+        headR = HEAD_R[i] * if (species == Species.CHICK || species == Species.PENGUIN) 0.95f else 1f,
         headCy = HEAD_CY[i],
-        bodyRx = BODY_RX[i] * if (species == Species.CHICK) 0.92f else 1f,
-        bodyRy = BODY_RY[i] * if (species == Species.CHICK) 1.05f else 1f,
+        bodyRx = BODY_RX[i] * bodyRxMul,
+        bodyRy = BODY_RY[i] * bodyRyMul,
         bodyCy = BODY_CY[i],
         earLen = earLen,
         earW = earW,
@@ -102,13 +114,18 @@ private fun earSpec(species: Species, i: Int): EarSpec = when (species) {
         0.065f,
         floatArrayOf(0.45f, 0.18f, 0f, 0f)[i],
     )
-    Species.CHICK, Species.ACORN -> EarSpec(0f, 0f, 0f)
+    Species.DOG -> EarSpec(floatArrayOf(0.11f, 0.12f, 0.13f, 0.14f)[i], 0.09f, 0f) // 늘어진 귀 길이
+    Species.HAMSTER, Species.PANDA -> EarSpec(0.07f, 0.09f, 0f) // 작은 반원 귀(반지름 근사)
+    Species.CHICK, Species.PENGUIN, Species.ACORN -> EarSpec(0f, 0f, 0f)
 }
 
 private fun muzzleSpec(species: Species, i: Int): Float = when (species) {
     Species.FOX -> floatArrayOf(0.20f, 0.42f, 0.60f, 0.75f)[i]
     Species.CAT -> floatArrayOf(0.15f, 0.30f, 0.45f, 0.55f)[i]
     Species.RABBIT -> floatArrayOf(0.10f, 0.20f, 0.30f, 0.35f)[i]
+    Species.DOG -> floatArrayOf(0.18f, 0.34f, 0.48f, 0.58f)[i]
+    Species.HAMSTER -> floatArrayOf(0.08f, 0.14f, 0.20f, 0.24f)[i]
+    Species.PANDA -> floatArrayOf(0.10f, 0.18f, 0.26f, 0.32f)[i]
     else -> 0f
 }
 
@@ -118,6 +135,8 @@ private fun tailSpec(species: Species, i: Int): TailSpec = when (species) {
     Species.FOX -> TailSpec(floatArrayOf(0.06f, 0.14f, 0.22f, 0.28f)[i], floatArrayOf(0.07f, 0.09f, 0.11f, 0.13f)[i])
     Species.CAT -> TailSpec(floatArrayOf(0.10f, 0.18f, 0.24f, 0.30f)[i], floatArrayOf(0.045f, 0.05f, 0.055f, 0.06f)[i])
     Species.RABBIT -> TailSpec(0.055f, 0.06f) // 폼폼 꼬리(길이 고정)
+    Species.DOG -> TailSpec(floatArrayOf(0.06f, 0.08f, 0.10f, 0.12f)[i], 0.05f) // 말린 꼬리
+    Species.HAMSTER -> TailSpec(0.03f, 0.025f)
     else -> TailSpec(0f, 0f)
 }
 
@@ -206,6 +225,23 @@ fun sideProportionsFor(species: Species, stage: GrowthStage): SideProportions {
     val bodyCy = ground - legLen - SIDE_BODY_HT[i] * 0.55f
     return when (species) {
         Species.CHICK -> biped(halfLen * 0.72f, legLen * 0.7f, headR, ground, bodyScaleY = 1.15f)
+        Species.PENGUIN -> biped(halfLen * 0.68f, legLen * 0.55f, headR * 0.9f, ground, bodyScaleY = 1.6f)
+        Species.HAMSTER -> SideProportions(
+            bodyCx = 0.47f, bodyCy = ground - legLen * 0.55f - SIDE_BODY_HT[i] * 0.95f,
+            bodyHalfLen = halfLen * 0.85f, bodyHalfHt = SIDE_BODY_HT[i] * 1.15f,
+            headCx = 0.47f + halfLen * 0.85f, headCy = ground - legLen * 0.55f - SIDE_BODY_HT[i] * 1.15f,
+            headR = headR * 1.05f,
+            shoulderX = 0.47f + halfLen * 0.5f, hipX = 0.47f - halfLen * 0.5f,
+            pivotY = ground - legLen * 0.55f, legLen = legLen * 0.5f, legThick = 0.035f,
+        )
+        Species.PANDA -> SideProportions(
+            bodyCx = 0.46f, bodyCy = bodyCy - 0.01f,
+            bodyHalfLen = halfLen * 1.08f, bodyHalfHt = SIDE_BODY_HT[i] * 1.2f,
+            headCx = 0.46f + halfLen * 1.02f, headCy = bodyCy - headR * 0.8f,
+            headR = headR * 1.05f,
+            shoulderX = 0.46f + halfLen * 0.60f, hipX = 0.46f - halfLen * 0.58f,
+            pivotY = ground - legLen, legLen = legLen * 0.9f, legThick = 0.062f,
+        )
         Species.RABBIT -> SideProportions(
             bodyCx = 0.44f, bodyCy = bodyCy + 0.01f,
             bodyHalfLen = halfLen * 0.92f, bodyHalfHt = SIDE_BODY_HT[i] * 1.05f,
@@ -255,5 +291,9 @@ fun gaitFor(species: Species): GaitSpec = when (species) {
     Species.CAT -> GaitSpec(0.92f, 22f, 0.006f, 0f)
     Species.RABBIT -> GaitSpec(0.85f, 30f, 0f, 0f, hop = true)
     Species.CHICK -> GaitSpec(1.0f, 18f, 0.008f, 4f)
-    Species.ACORN -> GaitSpec(1.0f, 0f, 0.012f, 0f) // 옆모습 미사용(FRONT 폴백)
+    Species.DOG -> GaitSpec(1.1f, 28f, 0.012f, 0f)
+    Species.HAMSTER -> GaitSpec(1.6f, 16f, 0.006f, 0f)   // 종종걸음
+    Species.PANDA -> GaitSpec(0.6f, 18f, 0.014f, 3f)     // 느릿느릿 큰 몸 흔들
+    Species.PENGUIN -> GaitSpec(1.05f, 12f, 0.010f, 7f)  // 뒤뚱뒤뚱
+    Species.ACORN -> GaitSpec(1.0f, 0f, 0.012f, 0f)      // 옆모습 미사용(FRONT 폴백)
 }

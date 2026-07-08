@@ -62,6 +62,10 @@ fun DrawScope.drawCreature(
             Species.CAT -> drawCatSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
             Species.RABBIT -> drawRabbitSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
             Species.CHICK -> drawChickSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
+            Species.DOG -> drawDogSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
+            Species.HAMSTER -> drawHamsterSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
+            Species.PENGUIN -> drawPenguinSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
+            Species.PANDA -> drawPandaSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
             Species.ACORN -> Unit
         }
         // 액세서리·기분 이펙트는 정면 전용(보행은 수 초의 과도 상태)
@@ -76,6 +80,10 @@ fun DrawScope.drawCreature(
         Species.CAT -> drawCat(::p, ::d, palette, prop, pose, motion, lod)
         Species.RABBIT -> drawRabbit(::p, ::d, palette, prop, pose, motion, lod)
         Species.CHICK -> drawChick(::p, ::d, palette, prop, pose, motion, lod, stage)
+        Species.DOG -> drawDog(::p, ::d, palette, prop, pose, motion, lod)
+        Species.HAMSTER -> drawHamster(::p, ::d, palette, prop, pose, motion, lod)
+        Species.PENGUIN -> drawPenguin(::p, ::d, palette, prop, pose, motion, lod)
+        Species.PANDA -> drawPanda(::p, ::d, palette, prop, pose, motion, lod)
         Species.ACORN -> drawAcorn(::p, ::d, palette, prop, motion, lod, stage)
     }
 
