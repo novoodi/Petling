@@ -104,10 +104,10 @@ class HomeViewModel(
     fun refresh() {
         viewModelScope.launch {
             scheduleRepository.sweepMissed()
-            val wasAway = characterRepository.refreshDailyState()
+            val refresh = characterRepository.refreshDailyState()
             val character = characterRepository.get()
             if (character != null) {
-                val ctx = if (wasAway) PhraseContext.RETURN_WELCOME else PhraseContext.DAILY_GREETING
+                val ctx = if (refresh.wasAway) PhraseContext.RETURN_WELCOME else PhraseContext.DAILY_GREETING
                 _greeting.value = phraseSelector.pick(
                     character.personality,
                     ctx,

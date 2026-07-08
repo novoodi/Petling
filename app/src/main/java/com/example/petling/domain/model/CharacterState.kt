@@ -18,6 +18,14 @@ data class CharacterState(
     val mood: Mood = Mood.CALM,
     val moodDateEpochDay: Long = 0L,
     val lastVisitEpochDay: Long = 0L,
+    /** 호감도 0..100. 매일 첫 방문·일정 완료·캡처 정리·간식으로 상승. */
+    val affection: Int = 0,
+    /** 일일 카운터(가산 상한·간식 개수) 리셋 기준일. */
+    val affectionDateEpochDay: Long = 0L,
+    /** 오늘 얻은 호감도 총량(상한 20). */
+    val affectionGainedToday: Int = 0,
+    /** 오늘 준 간식 개수(하루 3개). */
+    val snacksToday: Int = 0,
     /** 커스터마이징: 몸 색상 hue (0..360) */
     val colorHue: Float = 30f,
     /** 커스터마이징: 눈 모양 변형 인덱스 */

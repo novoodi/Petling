@@ -8,6 +8,8 @@ import com.example.petling.data.local.entity.toDomain
 import com.example.petling.data.local.entity.toEntity
 import com.example.petling.domain.AppClock
 import com.example.petling.domain.capture.CaptureBranchResolver
+import com.example.petling.domain.engine.AffectionLevel
+import com.example.petling.domain.engine.AffectionRules
 import com.example.petling.domain.engine.BranchResolver
 import com.example.petling.domain.engine.GrowthStateMachine
 import com.example.petling.domain.engine.MoodCalculator
@@ -35,6 +37,19 @@ data class CompletionResult(
     val newStreakDays: Int,
     val transition: GrowthStateMachine.Transition,
     val newBranch: Branch?,
+    val affectionLevelUp: AffectionLevel? = null,
+)
+
+/** 홈 진입 갱신 결과. */
+data class DailyRefresh(
+    val wasAway: Boolean,
+    val affectionLevelUp: AffectionLevel? = null,
+)
+
+/** 간식 주기 결과. null이면 오늘 소진. */
+data class SnackResult(
+    val remaining: Int,
+    val affectionLevelUp: AffectionLevel? = null,
 )
 
 /** 캡처 보관 시 캐릭터 성장 결과. */
@@ -121,7 +136,10 @@ class CharacterRepository(
                     createdAt = clock.nowMillis(),
                 ),
             )
-            var updated = current.copy(
+            // 캡처 정리도 관계를 쌓는다(+1)
+            val (withAffection, _) =
+                gainAffection(rolloverAffection(current, clock.today().toEpochDay()), AffectionRules.CAPTURE)
+            var updated = withAffection.copy(
                 totalXp = current.totalXp + gain,
                 captureCount = newCaptureCount,
             )
@@ -169,6 +187,8 @@ class CharacterRepository(
         val newStreak = StreakCalculator.onCompletion(lastDay, today, current.currentStreakDays)
         val gain = XpEngine.completionGain(schedule.isImportant, newStreak)
         val newCompletedCount = current.completedCount + 1
+        val (withAffection, affectionLevelUp) =
+            gainAffection(rolloverAffection(current, today.toEpochDay()), AffectionRules.COMPLETE)
 
         db.withTransaction {
             scheduleDao.setStatus(schedule.id, ScheduleStatus.COMPLETED, clock.nowMillis(), clock.nowMillis())
@@ -183,9 +203,9 @@ class CharacterRepository(
                     createdAt = clock.nowMillis(),
                 ),
             )
-            // 정리함 컨셉: 성장 단계는 캡처가 구동한다. 일정 완료는 XP·스트릭·통계만 반영.
+            // 정리함 컨셉: 성장 단계는 캡처가 구동한다. 일정 완료는 XP·스트릭·통계·호감도만 반영.
             characterDao.upsert(
-                current.copy(
+                withAffection.copy(
                     totalXp = current.totalXp + gain.total,
                     completedCount = newCompletedCount,
                     currentStreakDays = newStreak,
@@ -202,6 +222,7 @@ class CharacterRepository(
             newStreakDays = newStreak,
             transition = GrowthStateMachine.Transition.None,
             newBranch = current.branch,
+            affectionLevelUp = affectionLevelUp,
         )
     }
 
@@ -253,20 +274,70 @@ class CharacterRepository(
         }
     }
 
-    /** 홈 진입 등에서 기분/방문일을 갱신한다. */
-    suspend fun refreshDailyState(): Boolean {
-        val current = characterDao.get()?.toDomain() ?: return false
+    /** 일일 카운터(호감도 상한·간식)를 날짜가 바뀌었으면 리셋한다. */
+    private fun rolloverAffection(state: CharacterState, todayEpoch: Long): CharacterState =
+        if (state.affectionDateEpochDay != todayEpoch) {
+            state.copy(affectionDateEpochDay = todayEpoch, affectionGainedToday = 0, snacksToday = 0)
+        } else {
+            state
+        }
+
+    /** 호감도 가산을 적용한 상태와 레벨업 여부를 돌려준다. */
+    private fun gainAffection(state: CharacterState, gain: Int): Pair<CharacterState, AffectionLevel?> {
+        val applied = AffectionRules.apply(state.affection, state.affectionGainedToday, gain)
+        return state.copy(
+            affection = applied.newValue,
+            affectionGainedToday = state.affectionGainedToday + applied.gained,
+        ) to applied.levelUp
+    }
+
+    /** 홈 진입 등에서 기분/방문일을 갱신하고, 하루 첫 방문이면 호감도를 준다. */
+    suspend fun refreshDailyState(): DailyRefresh {
+        val current = characterDao.get()?.toDomain() ?: return DailyRefresh(wasAway = false)
         val today = clock.today()
-        val wasAway = current.lastVisitEpochDay in 1 until (today.toEpochDay() - 2)
-        val mood = recalcMood(today)
+        val todayEpoch = today.toEpochDay()
+        val wasAway = current.lastVisitEpochDay in 1 until (todayEpoch - 2)
+        val firstVisitToday = current.lastVisitEpochDay != todayEpoch
+
+        var state = rolloverAffection(current, todayEpoch)
+        if (wasAway) {
+            // 감쇠 먼저(가산 전) — 단계는 떨어지지 않음
+            val daysAway = todayEpoch - current.lastVisitEpochDay
+            state = state.copy(affection = AffectionRules.decayOnReturn(state.affection, daysAway))
+        }
+        var levelUp: AffectionLevel? = null
+        if (firstVisitToday) {
+            val (gained, up) = gainAffection(state, AffectionRules.FIRST_VISIT)
+            state = gained
+            levelUp = up
+        }
+
         characterDao.upsert(
-            current.copy(
-                mood = mood,
-                moodDateEpochDay = today.toEpochDay(),
-                lastVisitEpochDay = today.toEpochDay(),
+            state.copy(
+                mood = recalcMood(today),
+                moodDateEpochDay = todayEpoch,
+                lastVisitEpochDay = todayEpoch,
             ).toEntity(),
         )
-        return wasAway
+        return DailyRefresh(wasAway = wasAway, affectionLevelUp = levelUp)
+    }
+
+    /**
+     * 간식 주기. 하루 [AffectionRules.SNACKS_PER_DAY]개 한도, 호감도 +5.
+     * 한도 소진이면 null.
+     */
+    suspend fun giveSnack(): SnackResult? {
+        val current = characterDao.get()?.toDomain() ?: return null
+        val todayEpoch = clock.today().toEpochDay()
+        var state = rolloverAffection(current, todayEpoch)
+        if (state.snacksToday >= AffectionRules.SNACKS_PER_DAY) return null
+        val (gained, levelUp) = gainAffection(state, AffectionRules.SNACK)
+        state = gained.copy(snacksToday = gained.snacksToday + 1)
+        characterDao.upsert(state.toEntity())
+        return SnackResult(
+            remaining = AffectionRules.SNACKS_PER_DAY - state.snacksToday,
+            affectionLevelUp = levelUp,
+        )
     }
 
     /** 개발용: 완료 카운트를 주입해 성장 경계를 테스트한다. */

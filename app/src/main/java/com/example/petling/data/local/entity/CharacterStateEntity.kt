@@ -1,5 +1,6 @@
 package com.example.petling.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.example.petling.domain.model.Branch
@@ -27,6 +28,11 @@ data class CharacterStateEntity(
     val mood: Mood,
     val moodDateEpochDay: Long,
     val lastVisitEpochDay: Long,
+    // 호감도(v7). defaultValue는 MIGRATION_6_7의 DEFAULT와 반드시 일치해야 스키마 검증 통과.
+    @ColumnInfo(defaultValue = "0") val affection: Int = 0,
+    @ColumnInfo(defaultValue = "0") val affectionDateEpochDay: Long = 0L,
+    @ColumnInfo(defaultValue = "0") val affectionGainedToday: Int = 0,
+    @ColumnInfo(defaultValue = "0") val snacksToday: Int = 0,
     val colorHue: Float,
     val eyeStyle: Int,
     val quizAnswersJson: String?,
@@ -52,6 +58,10 @@ fun CharacterStateEntity.toDomain(): CharacterState = CharacterState(
     mood = mood,
     moodDateEpochDay = moodDateEpochDay,
     lastVisitEpochDay = lastVisitEpochDay,
+    affection = affection,
+    affectionDateEpochDay = affectionDateEpochDay,
+    affectionGainedToday = affectionGainedToday,
+    snacksToday = snacksToday,
     colorHue = colorHue,
     eyeStyle = eyeStyle,
     quizAnswersJson = quizAnswersJson,
@@ -74,6 +84,10 @@ fun CharacterState.toEntity(): CharacterStateEntity = CharacterStateEntity(
     mood = mood,
     moodDateEpochDay = moodDateEpochDay,
     lastVisitEpochDay = lastVisitEpochDay,
+    affection = affection,
+    affectionDateEpochDay = affectionDateEpochDay,
+    affectionGainedToday = affectionGainedToday,
+    snacksToday = snacksToday,
     colorHue = colorHue,
     eyeStyle = eyeStyle,
     quizAnswersJson = quizAnswersJson,
