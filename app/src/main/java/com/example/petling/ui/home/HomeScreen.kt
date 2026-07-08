@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,7 +50,6 @@ import com.example.petling.domain.model.CharacterSpec
 import com.example.petling.domain.model.Schedule
 import com.example.petling.domain.model.ScheduleStatus
 import com.example.petling.ui.appContainer
-import com.example.petling.ui.character.LocalCharacterRenderer
 import com.example.petling.ui.components.CategoryBadge
 import com.example.petling.ui.components.PetlingCard
 import com.example.petling.ui.components.timeLabel
@@ -77,14 +77,20 @@ fun HomeScreen(
     )
     val state by vm.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
-    val renderer = LocalCharacterRenderer.current
     var showAddSheet by remember { mutableStateOf(false) }
+    val yardState = rememberYardState()
 
     LaunchedEffect(Unit) {
         vm.events.collect { event ->
             when (event) {
-                is HomeEvent.XpGained -> snackbar.showMessage("+${event.amount} XP · ${event.message}")
-                is HomeEvent.Evolved -> snackbar.showMessage("🎉 ${event.stage.displayName} · ${event.message}")
+                is HomeEvent.XpGained -> {
+                    yardState.celebrate(false)
+                    snackbar.showMessage("+${event.amount} XP · ${event.message}")
+                }
+                is HomeEvent.Evolved -> {
+                    yardState.celebrate(true)
+                    snackbar.showMessage("🎉 ${event.stage.displayName} · ${event.message}")
+                }
             }
         }
     }
@@ -105,23 +111,18 @@ fun HomeScreen(
         ) {
             val character = state.character
             Spacer(Modifier.height(Dimens.Space4))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .clickable(onClick = onOpenCharacter),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (character != null) {
-                    renderer.Render(CharacterSpec.from(character), Modifier.size(180.dp))
-                }
-            }
             if (character != null) {
+                RoamingYard(CharacterSpec.from(character), yardState)
                 if (state.greeting.isNotBlank()) {
-                    SpeechBubble(state.greeting)
+                    SpeechBubble(state.greeting, tailCenterX = { yardState.centerX() }, onClick = onOpenCharacter)
                 }
                 Spacer(Modifier.height(Dimens.Space3))
-                StageProgress(character.name, state.progressInStage, state.nextStageTarget)
+                StageProgress(
+                    character.name,
+                    state.progressInStage,
+                    state.nextStageTarget,
+                    modifier = Modifier.clickable(onClick = onOpenCharacter),
+                )
             }
             Spacer(Modifier.height(Dimens.Space5))
             Text("오늘의 일정", style = MaterialTheme.typography.titleMedium)
@@ -196,24 +197,39 @@ private fun SheetOption(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 }
 
 @Composable
-private fun SpeechBubble(text: String) {
+private fun SpeechBubble(text: String, tailCenterX: () -> Float, onClick: () -> Unit) {
     val bubbleColor = MaterialTheme.colorScheme.primaryContainer
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-        // 캐릭터를 향하는 말풍선 꼬리
-        androidx.compose.foundation.Canvas(modifier = Modifier.size(width = 18.dp, height = 9.dp)) {
-            val path = androidx.compose.ui.graphics.Path().apply {
-                moveTo(size.width / 2f, 0f)
-                lineTo(0f, size.height)
-                lineTo(size.width, size.height)
-                close()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // 캐릭터를 향하는 말풍선 꼬리 — 캐릭터 중심 x를 따라 이동
+        androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val tailWpx = with(density) { 18.dp.toPx() }
+            val maxX = with(density) { maxWidth.toPx() } - tailWpx
+            androidx.compose.foundation.Canvas(
+                modifier = Modifier
+                    .offset {
+                        androidx.compose.ui.unit.IntOffset(
+                            (tailCenterX() - tailWpx / 2f).coerceIn(0f, maxX.coerceAtLeast(0f)).toInt(),
+                            0,
+                        )
+                    }
+                    .size(width = 18.dp, height = 9.dp),
+            ) {
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(size.width / 2f, 0f)
+                    lineTo(0f, size.height)
+                    lineTo(size.width, size.height)
+                    close()
+                }
+                drawPath(path, bubbleColor)
             }
-            drawPath(path, bubbleColor)
         }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(Dimens.RadiusLg))
                 .background(bubbleColor)
+                .clickable(onClick = onClick)
                 .padding(Dimens.Space4),
             contentAlignment = Alignment.Center,
         ) {
@@ -231,8 +247,8 @@ private fun SpeechBubble(text: String) {
 }
 
 @Composable
-private fun StageProgress(name: String, progress: Int, target: Int?) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+private fun StageProgress(name: String, progress: Int, target: Int?, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth()) {
         if (target != null) {
             Text(
                 "다음 단계까지 캡처 $progress / $target",
