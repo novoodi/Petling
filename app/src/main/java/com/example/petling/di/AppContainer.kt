@@ -41,6 +41,9 @@ class AppContainer(context: Context) {
     /** 일정 완료/진화 시 마당 캐릭터가 신나게 질주하도록 하는 신호(evolved=true면 2왕복). */
     val petCelebrate = kotlinx.coroutines.flow.MutableSharedFlow<Boolean>(extraBufferCapacity = 4)
 
+    /** 간식 던지기 신호(값=마당 내 낙하 위치 0..1). 홈이 발행하고 전역 마당이 소비한다. */
+    val petSnack = kotlinx.coroutines.flow.MutableSharedFlow<Float>(extraBufferCapacity = 4)
+
     val database: PetlingDatabase = Room.databaseBuilder(
         appContext,
         PetlingDatabase::class.java,

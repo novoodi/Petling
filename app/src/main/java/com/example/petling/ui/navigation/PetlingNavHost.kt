@@ -65,6 +65,20 @@ fun PetlingNavHost(
     androidx.compose.runtime.LaunchedEffect(Unit) {
         container.petCelebrate.collect { evolved -> yardState.celebrate(evolved) }
     }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        container.petSnack.collect { frac ->
+            yardState.events.trySend(com.example.petling.ui.home.YardEvent.Snack(frac))
+        }
+    }
+    // 주인이 앱에 들어오면(콜드스타트+백그라운드 복귀) 종별 인사 — 60초 스로틀
+    val lastGreetAt = androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        val now = System.currentTimeMillis()
+        if (now - lastGreetAt.longValue > 60_000) {
+            lastGreetAt.longValue = now
+            yardState.events.trySend(com.example.petling.ui.home.YardEvent.Greet)
+        }
+    }
 
     // 정리 완료 알림 탭 → 보관함으로(1회)
     androidx.compose.runtime.LaunchedEffect(openLibrary) {
@@ -217,6 +231,7 @@ fun PetlingNavHost(
         if (showBottomBar && ch != null) {
             AppPet(
                 baseSpec = CharacterSpec.from(ch),
+                affection = ch.affection,
                 state = yardState,
                 showBubble = currentDest?.hasRoute(HomeRoute::class) ?: false,
                 greeting = petGreeting,

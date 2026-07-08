@@ -1,5 +1,6 @@
 package com.example.petling.ui.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -79,6 +80,11 @@ fun HomeScreen(
     // 전역 마당 캐릭터가 홈에서 띄울 말풍선 문구를 발행(오버레이가 구독).
     LaunchedEffect(state.greeting) { container.petSpeech.value = state.greeting }
 
+    // 앱 복귀마다 기분·방문일·인사(하루 첫 방문 호감도 포함) 갱신
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        vm.refresh()
+    }
+
     LaunchedEffect(Unit) {
         vm.events.collect { event ->
             when (event) {
@@ -90,6 +96,11 @@ fun HomeScreen(
                     container.petCelebrate.tryEmit(true)
                     snackbar.showMessage("🎉 ${event.stage.displayName} · ${event.message}")
                 }
+                is HomeEvent.AffectionLevelUp -> {
+                    container.petCelebrate.tryEmit(false)
+                    snackbar.showMessage("💛 이제 '${event.level.displayName}' 사이! ${event.message}")
+                }
+                is HomeEvent.SnackGiven -> container.petSnack.tryEmit(event.xFraction)
             }
         }
     }
@@ -102,10 +113,10 @@ fun HomeScreen(
             }
         },
     ) { padding ->
+      Box(modifier = Modifier.fillMaxSize().padding(padding)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(horizontal = Dimens.ScreenPadding),
         ) {
             val character = state.character
@@ -144,6 +155,16 @@ fun HomeScreen(
                 }
             }
         }
+
+        // 간식 버튼(좌하단, 마당 위) — 하루 3개
+        SnackChip(
+            remaining = state.snacksRemaining,
+            onClick = vm::giveSnack,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = Dimens.ScreenPadding, bottom = 150.dp),
+        )
+      }
     }
 
     if (showAddSheet) {
@@ -191,6 +212,29 @@ private fun SheetOption(icon: androidx.compose.ui.graphics.vector.ImageVector, l
         Icon(icon, contentDescription = null, tint = Brand500)
         Spacer(Modifier.size(Dimens.Space3))
         Text(label, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/** 간식 주기 칩: 🍪 + 남은 개수. 소진 시 비활성. */
+@Composable
+private fun SnackChip(remaining: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val enabled = remaining > 0
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                if (enabled) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = Dimens.Space4, vertical = Dimens.Space2),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "🍪 $remaining",
+            style = MaterialTheme.typography.titleSmall,
+            color = if (enabled) MaterialTheme.colorScheme.onPrimaryContainer else TextTertiary,
+        )
     }
 }
 

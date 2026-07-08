@@ -43,6 +43,7 @@ private val PET_SPRITE = 140.dp
 @Composable
 fun AppPet(
     baseSpec: CharacterSpec,
+    affection: Int,
     state: YardState,
     showBubble: Boolean,
     greeting: String,
@@ -76,7 +77,7 @@ fun AppPet(
         }
 
         // 마당(하단 배회)
-        RoamingYard(baseSpec, state, Modifier.align(Alignment.BottomCenter))
+        RoamingYard(baseSpec, affection, state, Modifier.align(Alignment.BottomCenter))
     }
 }
 
