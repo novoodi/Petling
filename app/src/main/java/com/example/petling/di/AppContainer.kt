@@ -24,6 +24,7 @@ import com.example.petling.domain.parsing.RuleBasedScheduleParser
 import com.example.petling.domain.parsing.ScheduleParser
 import com.example.petling.notifications.AlarmScheduler
 import com.example.petling.notifications.ScheduleAlarmScheduler
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * 수동 DI 컨테이너. Hilt 도입 전까지 앱 전역 의존성을 조립한다.
@@ -33,6 +34,12 @@ class AppContainer(context: Context) {
     private val appContext = context.applicationContext
 
     val clock: AppClock = SystemAppClock()
+
+    /** 전역 마당 캐릭터가 홈에서 띄울 말풍선 문구. 홈 화면이 발행하고 오버레이가 구독한다. */
+    val petSpeech = MutableStateFlow("")
+
+    /** 일정 완료/진화 시 마당 캐릭터가 신나게 질주하도록 하는 신호(evolved=true면 2왕복). */
+    val petCelebrate = kotlinx.coroutines.flow.MutableSharedFlow<Boolean>(extraBufferCapacity = 4)
 
     val database: PetlingDatabase = Room.databaseBuilder(
         appContext,

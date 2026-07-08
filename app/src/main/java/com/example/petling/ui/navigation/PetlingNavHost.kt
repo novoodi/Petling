@@ -1,6 +1,8 @@
 package com.example.petling.ui.navigation
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
@@ -18,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -25,9 +28,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.example.petling.domain.model.CharacterSpec
+import com.example.petling.ui.appContainer
 import com.example.petling.ui.calendar.CalendarScreen
 import com.example.petling.ui.characterdetail.CharacterDetailScreen
+import com.example.petling.ui.home.AppPet
 import com.example.petling.ui.home.HomeScreen
+import com.example.petling.ui.home.rememberYardState
 import com.example.petling.ui.onboarding.OnboardingScreen
 import com.example.petling.ui.schedule.ScheduleDetailScreen
 import com.example.petling.ui.schedule.ScheduleEditScreen
@@ -48,6 +55,16 @@ fun PetlingNavHost(
 ) {
     val backStack by navController.currentBackStackEntryAsState()
     val currentDest = backStack?.destination
+
+    // 전역 마당 캐릭터(모든 메인 탭에서 하단을 혼자 배회)
+    val container = appContainer()
+    val petCharacter by container.characterRepository.characterState
+        .collectAsStateWithLifecycle(initialValue = null)
+    val petGreeting by container.petSpeech.collectAsStateWithLifecycle()
+    val yardState = rememberYardState()
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        container.petCelebrate.collect { evolved -> yardState.celebrate(evolved) }
+    }
 
     // 정리 완료 알림 탭 → 보관함으로(1회)
     androidx.compose.runtime.LaunchedEffect(openLibrary) {
@@ -100,10 +117,11 @@ fun PetlingNavHost(
             }
         },
     ) { padding ->
+      Box(modifier = Modifier.fillMaxSize().padding(padding)) {
         NavHost(
             navController = navController,
             startDestination = if (startOnboarding) OnboardingRoute else HomeRoute,
-            modifier = Modifier.padding(padding),
+            modifier = Modifier.fillMaxSize(),
         ) {
             composable<OnboardingRoute> {
                 OnboardingScreen(onComplete = {
@@ -193,6 +211,19 @@ fun PetlingNavHost(
                 )
             }
         }
+
+        // 메인 4개 탭에서만 하단 마당 캐릭터를 띄운다(온보딩/상세 화면 제외).
+        val ch = petCharacter
+        if (showBottomBar && ch != null) {
+            AppPet(
+                baseSpec = CharacterSpec.from(ch),
+                state = yardState,
+                showBubble = currentDest?.hasRoute(HomeRoute::class) ?: false,
+                greeting = petGreeting,
+                onOpenCharacter = { navController.navigate(CharacterRoute) },
+            )
+        }
+      }
     }
 }
 

@@ -1,6 +1,5 @@
 package com.example.petling.ui.home
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,7 +44,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.petling.domain.model.CharacterSpec
 import com.example.petling.domain.model.Schedule
 import com.example.petling.domain.model.ScheduleStatus
 import com.example.petling.ui.appContainer
@@ -78,17 +75,19 @@ fun HomeScreen(
     val state by vm.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var showAddSheet by remember { mutableStateOf(false) }
-    val yardState = rememberYardState()
+
+    // 전역 마당 캐릭터가 홈에서 띄울 말풍선 문구를 발행(오버레이가 구독).
+    LaunchedEffect(state.greeting) { container.petSpeech.value = state.greeting }
 
     LaunchedEffect(Unit) {
         vm.events.collect { event ->
             when (event) {
                 is HomeEvent.XpGained -> {
-                    yardState.celebrate(false)
+                    container.petCelebrate.tryEmit(false)
                     snackbar.showMessage("+${event.amount} XP · ${event.message}")
                 }
                 is HomeEvent.Evolved -> {
-                    yardState.celebrate(true)
+                    container.petCelebrate.tryEmit(true)
                     snackbar.showMessage("🎉 ${event.stage.displayName} · ${event.message}")
                 }
             }
@@ -112,11 +111,6 @@ fun HomeScreen(
             val character = state.character
             Spacer(Modifier.height(Dimens.Space4))
             if (character != null) {
-                RoamingYard(CharacterSpec.from(character), yardState)
-                if (state.greeting.isNotBlank()) {
-                    SpeechBubble(state.greeting, tailCenterX = { yardState.centerX() }, onClick = onOpenCharacter)
-                }
-                Spacer(Modifier.height(Dimens.Space3))
                 StageProgress(
                     character.name,
                     state.progressInStage,
@@ -135,7 +129,11 @@ fun HomeScreen(
                     modifier = Modifier.padding(vertical = Dimens.Space6),
                 )
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(Dimens.Space2)) {
+                // 하단 여백: 마당을 배회하는 캐릭터 뒤로 마지막 일정이 가리지 않게
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(Dimens.Space2),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 130.dp),
+                ) {
                     items(state.todaySchedules, key = { it.id }) { schedule ->
                         ScheduleRow(
                             schedule = schedule,
@@ -193,56 +191,6 @@ private fun SheetOption(icon: androidx.compose.ui.graphics.vector.ImageVector, l
         Icon(icon, contentDescription = null, tint = Brand500)
         Spacer(Modifier.size(Dimens.Space3))
         Text(label, style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
-@Composable
-private fun SpeechBubble(text: String, tailCenterX: () -> Float, onClick: () -> Unit) {
-    val bubbleColor = MaterialTheme.colorScheme.primaryContainer
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // 캐릭터를 향하는 말풍선 꼬리 — 캐릭터 중심 x를 따라 이동
-        androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val tailWpx = with(density) { 18.dp.toPx() }
-            val maxX = with(density) { maxWidth.toPx() } - tailWpx
-            androidx.compose.foundation.Canvas(
-                modifier = Modifier
-                    .offset {
-                        androidx.compose.ui.unit.IntOffset(
-                            (tailCenterX() - tailWpx / 2f).coerceIn(0f, maxX.coerceAtLeast(0f)).toInt(),
-                            0,
-                        )
-                    }
-                    .size(width = 18.dp, height = 9.dp),
-            ) {
-                val path = androidx.compose.ui.graphics.Path().apply {
-                    moveTo(size.width / 2f, 0f)
-                    lineTo(0f, size.height)
-                    lineTo(size.width, size.height)
-                    close()
-                }
-                drawPath(path, bubbleColor)
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(Dimens.RadiusLg))
-                .background(bubbleColor)
-                .clickable(onClick = onClick)
-                .padding(Dimens.Space4),
-            contentAlignment = Alignment.Center,
-        ) {
-            // 문구가 바뀔 때 부드럽게 전환(캐릭터가 "말을 바꾸는" 느낌)
-            androidx.compose.animation.Crossfade(targetState = text, label = "speech") { t ->
-                Text(
-                    t,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-            }
-        }
     }
 }
 
