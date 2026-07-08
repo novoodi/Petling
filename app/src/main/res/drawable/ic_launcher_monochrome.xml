@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Petling 테마 아이콘용 단색 실루엣(도토리). 시스템이 테마 색으로 틴트한다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108"
+    android:tint="#000000">
+    <group android:scaleX="0.92" android:scaleY="0.92" android:pivotX="54" android:pivotY="54">
+        <!-- 줄기 -->
+        <path
+            android:fillColor="#000000"
+            android:pathData="M51.5,29 L51.5,22.5 C51.5,19.5 56.5,19.5 56.5,22.5 L56.5,29 Z" />
+        <!-- 모자 -->
+        <path
+            android:fillColor="#000000"
+            android:pathData="M29,48 C29,33 43,27 54,27 C65,27 79,33 79,48 C79,49.6 29,49.6 29,48 Z" />
+        <!-- 몸통 -->
+        <path
+            android:fillColor="#000000"
+            android:pathData="M33,47 C33,45.5 75,45.5 75,47 C77.5,63 68,88 54,88 C40,88 30.5,63 33,47 Z" />
+    </group>
+</vector>
