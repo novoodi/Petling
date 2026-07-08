@@ -9,10 +9,10 @@ enum class Expression {
 
 /**
  * 재생할 애니메이션 종류.
- * WALK/SLEEP은 홈 마당 로밍용으로, 렌더 시점 spec.copy로만 주입하고 저장 경로엔 넣지 않는다.
+ * WALK/SLEEP/EAT/GROOM/PECK은 홈 마당 로밍용으로, 렌더 시점 spec.copy로만 주입하고 저장 경로엔 넣지 않는다.
  */
 enum class CharacterAnimation {
-    IDLE, BOUNCE, HATCHING, EVOLVING, WALK, SLEEP,
+    IDLE, BOUNCE, HATCHING, EVOLVING, WALK, SLEEP, EAT, GROOM, PECK,
 }
 
 /**

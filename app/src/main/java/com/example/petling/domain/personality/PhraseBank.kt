@@ -13,6 +13,9 @@ enum class PhraseContext {
     LEVEL_UP,             // 성장 단계 상승
     MISSED_GENTLE,        // 미이행 — 부드럽게
     RETURN_WELCOME,       // 오랜만의 복귀 환영
+    SNACK,                // 간식 냠냠 후
+    AFFECTION_UP,         // 호감도 단계 상승
+    PETTED,               // 쓰다듬기(탭) 반응
 }
 
 /**
@@ -66,6 +69,18 @@ object PhraseBank {
                 "돌아와줘서 고마워! 기다렸어.",
                 "다시 만나서 반가워. 천천히 다시 시작하자.",
             ),
+            PhraseContext.SNACK to listOf(
+                "잘 먹을게! 냠냠… 역시 최고야.",
+                "고마워, 힘이 나는 맛이야!",
+            ),
+            PhraseContext.AFFECTION_UP to listOf(
+                "우리 좀 더 가까워진 것 같아. 기분 좋다!",
+                "{name}랑 있으면 든든해. 앞으로도 잘 부탁해!",
+            ),
+            PhraseContext.PETTED to listOf(
+                "헤헤, 간지러워!",
+                "고마워, 기운 났어!",
+            ),
         ),
         Personality.FREE_SPIRIT to mapOf(
             PhraseContext.DAILY_GREETING to listOf(
@@ -106,6 +121,18 @@ object PhraseBank {
             PhraseContext.RETURN_WELCOME to listOf(
                 "오랜만~! 어디 갔었어, 보고 싶었잖아!",
                 "돌아왔네! 자, 다시 신나게 가보자~",
+            ),
+            PhraseContext.SNACK to listOf(
+                "오~ 이 맛이지! 하나 더는 안 돼?",
+                "냠냠~ 세상에서 제일 맛있는 순간!",
+            ),
+            PhraseContext.AFFECTION_UP to listOf(
+                "어라, 나 너 꽤 좋아하게 됐는데?",
+                "우리 이제 완전 단짝 각인데~?",
+            ),
+            PhraseContext.PETTED to listOf(
+                "오~ 좋다 좋다, 거기 거기!",
+                "히히, 한 번 더 해줘!",
             ),
         ),
         Personality.WORRIER to mapOf(
@@ -148,6 +175,18 @@ object PhraseBank {
                 "돌아왔구나! 걱정했잖아… 반가워.",
                 "다시 와줘서 고마워. 천천히 하면 돼, 응?",
             ),
+            PhraseContext.SNACK to listOf(
+                "이거 먹어도 되는 거지…? 냠. 고마워!",
+                "맛있다… 너도 뭐 좀 챙겨 먹었어?",
+            ),
+            PhraseContext.AFFECTION_UP to listOf(
+                "이제 네 옆이 제일 편해… 이상하지 않지?",
+                "우리 사이, 조금 더 단단해진 것 같아.",
+            ),
+            PhraseContext.PETTED to listOf(
+                "앗, 깜짝이야… 근데 좋다.",
+                "고마워… 안심돼.",
+            ),
         ),
         Personality.DREAMER to mapOf(
             PhraseContext.DAILY_GREETING to listOf(
@@ -188,6 +227,18 @@ object PhraseBank {
             PhraseContext.RETURN_WELCOME to listOf(
                 "어… 돌아왔네! 보고 싶었어, 정말로.",
                 "다시 와줘서 고마워~ 계속 기다렸어.",
+            ),
+            PhraseContext.SNACK to listOf(
+                "우와… 구름 맛이 나. 고마워~",
+                "냠냠… 이 맛, 꿈에 나올 것 같아.",
+            ),
+            PhraseContext.AFFECTION_UP to listOf(
+                "있지, 요즘 네 생각을 자주 해~ 우리 더 친해졌나 봐.",
+                "너랑 있으면 좋은 꿈만 꿔.",
+            ),
+            PhraseContext.PETTED to listOf(
+                "몽글몽글… 기분 좋아라~",
+                "헤에… 한참 이러고 있고 싶다.",
             ),
         ),
     )
