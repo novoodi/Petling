@@ -79,8 +79,7 @@ fun OnboardingScreen(onComplete: () -> Unit) {
     ) {
         AnimatedContent(targetState = state.step, label = "onboardingStep") { step ->
             when (step) {
-                OnboardingStep.WELCOME -> WelcomeStep(onNext = vm::goToSpecies)
-                OnboardingStep.SPECIES -> SpeciesStep(onSelect = vm::selectSpecies)
+                OnboardingStep.WELCOME -> WelcomeStep(onNext = vm::goToHatch)
                 OnboardingStep.HATCH -> HatchStep(species = state.species, colorHue = state.colorHue, onHatched = vm::onHatched)
                 OnboardingStep.QUIZ -> QuizStep(vm, state)
                 OnboardingStep.NAMING -> NamingStep(vm, state)
@@ -171,65 +170,14 @@ private fun WelcomeStep(onNext: () -> Unit) {
     }
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-private fun SpeciesStep(onSelect: (com.example.petling.domain.model.Species) -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Spacer(Modifier.height(Dimens.Space8))
-        Text("함께할 친구를 골라요", style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(Dimens.Space2))
-        Text(
-            "고른 친구를 알에서 부화시켜 함께 키워요.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(Dimens.Space6))
-        androidx.compose.foundation.layout.FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(Dimens.Space3, Alignment.CenterHorizontally),
-            verticalArrangement = Arrangement.spacedBy(Dimens.Space3),
-        ) {
-            com.example.petling.domain.model.Species.entries.filter { it.pickable }.forEach { species ->
-                SpeciesCard(species, onClick = { onSelect(species) })
-            }
-        }
-    }
-}
-
-@Composable
-private fun SpeciesCard(species: com.example.petling.domain.model.Species, onClick: () -> Unit) {
-    val palette = ModoriPalette.from(species.defaultHue, species)
-    Column(
-        modifier = Modifier
-            .size(width = 100.dp, height = 128.dp)
-            .clip(RoundedCornerShape(Dimens.RadiusLg))
-            .background(Brand50)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Canvas(modifier = Modifier.size(76.dp)) {
-            drawCreature(
-                species = species,
-                stage = GrowthStage.JUVENILE,
-                branch = null,
-                mood = Mood.HAPPY,
-                expression = Expression.HAPPY,
-                palette = palette,
-                eyeStyle = 0,
-            )
-        }
-        Text(species.displayName, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
+/**
+ * 랜덤 부화: 어떤 친구가 나올지 모르는 알을 톡톡 두드려 깨운다(가챠 감성).
+ * 알은 중립 팔레트로 그려 종 힌트를 차단하고, 3번째 탭의 플래시 정점에서 종을 공개한다.
+ */
 @Composable
 private fun HatchStep(species: com.example.petling.domain.model.Species, colorHue: Float, onHatched: () -> Unit) {
     var taps by remember { mutableIntStateOf(0) }
+    var revealed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val shake = remember { Animatable(0f) }
     val flash = remember { Animatable(0f) }
@@ -240,9 +188,22 @@ private fun HatchStep(species: com.example.petling.domain.model.Species, colorHu
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("알을 톡톡 두드려 깨워보세요", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(Dimens.Space8))
-        val palette = ModoriPalette.from(colorHue, species)
+        Text(
+            if (revealed) "${species.displayName}가 태어났어요!" else "어떤 친구가 나올까요?",
+            style = MaterialTheme.typography.titleLarge,
+        )
+        Spacer(Modifier.height(Dimens.Space2))
+        if (!revealed) {
+            Text(
+                "알을 톡톡 두드려 깨워보세요",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(Dimens.Space6))
+        // 부화 전에는 중립 팔레트(종 힌트 차단), 공개 후 실제 색
+        val eggPalette = ModoriPalette.from(45f)
+        val revealPalette = ModoriPalette.from(colorHue, species)
         Canvas(
             modifier = Modifier
                 .size(220.dp)
@@ -255,7 +216,11 @@ private fun HatchStep(species: com.example.petling.domain.model.Species, colorHu
                             shake.animateTo(-1f, androidx.compose.animation.core.tween(80))
                             shake.animateTo(0f, androidx.compose.animation.core.tween(80))
                             if (taps >= 3) {
-                                flash.animateTo(1f, androidx.compose.animation.core.tween(200))
+                                // 플래시 정점에서 공개 → 잠시 감상 후 다음 단계
+                                flash.animateTo(1f, androidx.compose.animation.core.tween(180))
+                                revealed = true
+                                flash.animateTo(0f, androidx.compose.animation.core.tween(350))
+                                kotlinx.coroutines.delay(1200)
                                 onHatched()
                             }
                         }
@@ -265,18 +230,25 @@ private fun HatchStep(species: com.example.petling.domain.model.Species, colorHu
             rotate(shake.value * 8f) {
                 drawCreature(
                     species = species,
-                    stage = if (taps >= 3) GrowthStage.JUVENILE else GrowthStage.EGG,
+                    stage = if (revealed) GrowthStage.JUVENILE else GrowthStage.EGG,
                     branch = null,
-                    mood = Mood.CALM,
+                    mood = if (revealed) Mood.HAPPY else Mood.CALM,
                     expression = Expression.HAPPY,
-                    palette = palette,
+                    palette = if (revealed) revealPalette else eggPalette,
                     eyeStyle = 0,
                     crackProgress = crack,
                 )
             }
+            // 부화 플래시(흰 원 오버레이)
+            if (flash.value > 0f) {
+                drawCircle(
+                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = flash.value),
+                    radius = size.minDimension * 0.45f,
+                )
+            }
         }
         Spacer(Modifier.height(Dimens.Space6))
-        Text("${taps} / 3", style = MaterialTheme.typography.labelMedium)
+        if (!revealed) Text("${taps} / 3", style = MaterialTheme.typography.labelMedium)
     }
 }
 

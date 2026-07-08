@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-enum class OnboardingStep { WELCOME, SPECIES, HATCH, QUIZ, NAMING, CATEGORY }
+enum class OnboardingStep { WELCOME, HATCH, QUIZ, NAMING, CATEGORY }
 
 data class OnboardingUiState(
     val step: OnboardingStep = OnboardingStep.WELCOME,
@@ -39,12 +39,12 @@ class OnboardingViewModel(
 
     val questions = PersonalityQuiz.questions
 
-    fun goToSpecies() {
-        _state.value = _state.value.copy(step = OnboardingStep.SPECIES)
-    }
-
-    /** 스타터 선택 → 그 종의 기본 색으로 맞추고 부화 단계로. */
-    fun selectSpecies(species: Species) {
+    /**
+     * 부화 단계로 — 어떤 친구가 나올지는 **랜덤**(가챠 감성).
+     * 종은 여기서 미리 정하되 부화 순간까지 화면에 공개하지 않는다.
+     */
+    fun goToHatch() {
+        val species = Species.entries.filter { it.pickable }.random()
         _state.value = _state.value.copy(
             species = species,
             colorHue = species.defaultHue,
@@ -65,8 +65,7 @@ class OnboardingViewModel(
         val s = _state.value
         _state.value = when (s.step) {
             OnboardingStep.WELCOME -> return false
-            OnboardingStep.SPECIES -> s.copy(step = OnboardingStep.WELCOME)
-            OnboardingStep.HATCH -> s.copy(step = OnboardingStep.SPECIES)
+            OnboardingStep.HATCH -> s.copy(step = OnboardingStep.WELCOME)
             OnboardingStep.QUIZ ->
                 if (s.currentQuestion > 0) {
                     s.copy(currentQuestion = s.currentQuestion - 1, quizAnswers = s.quizAnswers.dropLast(1))
