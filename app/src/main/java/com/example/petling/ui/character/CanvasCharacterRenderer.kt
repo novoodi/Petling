@@ -132,12 +132,41 @@ class CanvasCharacterRenderer : CharacterRenderer {
             label = "sleepBreathe",
         )
 
+        // 냠냠(EAT)
+        val eatPhase by transition.animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(380, easing = LinearEasing), RepeatMode.Restart),
+            label = "eat",
+        )
+
+        // 그루밍(GROOM)
+        val groomPhase by transition.animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart),
+            label = "groom",
+        )
+
+        // 쪼기(PECK): 머무르다 콕 숙였다 들기
+        val peckPhase by transition.animateFloat(
+            initialValue = 0f, targetValue = 0f,
+            animationSpec = infiniteRepeatable(
+                animation = keyframes {
+                    durationMillis = 620
+                    0f at 0; 0f at 200; 1f at 320; 0f at 480; 0f at 620
+                },
+            ),
+            label = "peck",
+        )
+
         Canvas(modifier = modifier) {
             val base = size.minDimension
             val idle = spec.animation == CharacterAnimation.IDLE
             val bouncing = spec.animation == CharacterAnimation.BOUNCE
             val walking = spec.animation == CharacterAnimation.WALK
             val sleeping = spec.animation == CharacterAnimation.SLEEP
+            val eating = spec.animation == CharacterAnimation.EAT
+            val grooming = spec.animation == CharacterAnimation.GROOM
+            val pecking = spec.animation == CharacterAnimation.PECK
 
             var dy = 0f
             var scaleX = 1f
@@ -179,6 +208,24 @@ class CanvasCharacterRenderer : CharacterRenderer {
                     breathe = sleepBreathe,
                     effectPhase = effectPhase,
                 )
+            } else if (eating) {
+                // 앞으로 숙이고 냠냠 씹는 펄스
+                val chew = abs(sin(eatPhase * 2 * PI)).toFloat()
+                tilt = 8f + sin(eatPhase * 2 * PI).toFloat() * 4f
+                dy = chew * base * 0.015f
+                scaleY = 1f - chew * 0.05f
+                motion = CreatureMotion(breathe = bob, effectPhase = effectPhase, tailWag = eatPhase)
+            } else if (grooming) {
+                // 옆으로 기울여 핥는 헤드밥, 지그시 감은 눈
+                tilt = 12f
+                dy = sin(groomPhase * 2 * PI).toFloat() * base * 0.012f
+                eyeBlink = maxOf(blink, 0.55f)
+                motion = CreatureMotion(breathe = bob, effectPhase = effectPhase, tailWag = groomPhase)
+            } else if (pecking) {
+                // 바닥 콕콕 쪼기(몸 전체 숙임 근사) + 톡톡 먼지
+                tilt = peckPhase * 20f
+                dy = peckPhase * base * 0.03f
+                motion = CreatureMotion(breathe = bob, effectPhase = effectPhase, dust = peckPhase * 0.3f)
             } else if (idle) {
                 dy = bob * base * 0.015f
                 tilt = sway * 2.2f
