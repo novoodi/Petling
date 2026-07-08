@@ -5,6 +5,7 @@ import com.example.petling.domain.model.Personality
 /** 캐릭터가 말하는 상황(컨텍스트). */
 enum class PhraseContext {
     DAILY_GREETING,       // 홈 진입 인사
+    UPCOMING,             // 홈에서 다가오는 일정 예고(캐릭터가 직접 알려줌)
     REMINDER,             // 일정 알림
     REGISTERED,           // 일정 등록 직후
     COMPLETED,            // 일정 완료
@@ -30,6 +31,11 @@ object PhraseBank {
                 "좋은 하루야! 오늘도 차근차근 해보자.",
                 "왔구나! 오늘 할 일 같이 챙겨볼까?",
                 "난 준비됐어. 오늘도 잘 부탁해!",
+            ),
+            PhraseContext.UPCOMING to listOf(
+                "다음 일정은 {time} '{title}'! 내가 잘 기억하고 있을게.",
+                "{time}에 '{title}' 있어. 같이 준비해볼까?",
+                "오늘 {time} '{title}' 잊지 마! 내가 챙길게.",
             ),
             PhraseContext.REMINDER to listOf(
                 "{time}에 '{title}' 있어. 준비됐지? 나도 응원할게!",
@@ -67,6 +73,11 @@ object PhraseBank {
                 "오늘도 대충 신나게 가보자고~",
                 "왔구나! 심심했잖아, 놀아줘.",
             ),
+            PhraseContext.UPCOMING to listOf(
+                "있잖아~ {time}에 {title}이래! 나 데려가 줄 거지?",
+                "{time}에 {title} 있다~ 까먹으면 나한테 혼난다?",
+                "다음은 {time} {title}! 그전까진 나랑 놀자~",
+            ),
             PhraseContext.REMINDER to listOf(
                 "어이~ {time}에 {title}이래. 나 데려가라~",
                 "{title} 시간 다 됐다? {time}이야, 슬슬~",
@@ -103,6 +114,11 @@ object PhraseBank {
                 "안녕! 빠뜨린 거 없나 같이 확인해보자.",
                 "오늘도 무사히 잘 넘겨보자, 응?",
             ),
+            PhraseContext.UPCOMING to listOf(
+                "저기… {time}에 '{title}' 있는 거 알지? 미리 준비하자!",
+                "{time}에 '{title}'… 늦지 않게 내가 계속 알려줄게!",
+                "다음 일정 {time} '{title}'! 벌써부터 조마조마해…",
+            ),
             PhraseContext.REMINDER to listOf(
                 "저기… {time}에 {title}인 거 알지?! 늦으면 안 돼!",
                 "{title}!! {time}이야, 지금 준비해야 해!",
@@ -138,6 +154,11 @@ object PhraseBank {
                 "음… 왔구나. 오늘은 어떤 하루가 될까?",
                 "안녕… 오늘도 좋은 일 있으면 좋겠다.",
                 "어, 왔네. 잠깐 딴생각 중이었어.",
+            ),
+            PhraseContext.UPCOMING to listOf(
+                "음… 다음은 {time}에 '{title}'이었지. 내가 기억해뒀어.",
+                "{time}에 '{title}'… 어떤 시간이 될까, 궁금하다.",
+                "아 맞다, {time}에 '{title}' 있어! 깜빡할 뻔했네.",
             ),
             PhraseContext.REMINDER to listOf(
                 "음… {time}에 {title}이었나…? 맞아, 그거였어!",

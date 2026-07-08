@@ -48,6 +48,9 @@ class HomeViewModel(
     private val _events = Channel<HomeEvent>(Channel.BUFFERED)
     val events: Flow<HomeEvent> = _events.receiveAsFlow()
 
+    /** 같은 일정에 대해 문구가 재추첨되지 않도록 캐시(일정 id → 문구). */
+    private var upcomingCache: Pair<Long, String>? = null
+
     val uiState: StateFlow<HomeUiState> = combine(
         characterRepository.characterState,
         scheduleRepository.observeByDate(clock.today()),
@@ -56,11 +59,43 @@ class HomeViewModel(
         HomeUiState(
             character = character,
             todaySchedules = todays,
-            greeting = greeting,
+            greeting = speechFor(character, todays, greeting),
             nextStageTarget = character?.let { nextTarget(it.stage) },
             progressInStage = character?.captureCount ?: 0,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
+
+    /**
+     * 캐릭터가 할 말을 고른다: 오늘 남은(미완료·시간 있는) 일정이 있으면
+     * 그 일정을 직접 예고하고(다마고치가 비서 역할), 없으면 기본 인사를 쓴다.
+     */
+    private fun speechFor(
+        character: CharacterState?,
+        todays: List<Schedule>,
+        baseGreeting: String,
+    ): String {
+        character ?: return baseGreeting
+        val nowMin = clock.nowMinuteOfDay()
+        val next = todays
+            .filter {
+                it.status == com.example.petling.domain.model.ScheduleStatus.PENDING &&
+                    it.startMinuteOfDay != null && it.startMinuteOfDay >= nowMin
+            }
+            .minByOrNull { it.startMinuteOfDay!! }
+            ?: return baseGreeting
+        upcomingCache?.let { (id, phrase) -> if (id == next.id) return phrase }
+        val phrase = phraseSelector.pick(
+            character.personality,
+            PhraseContext.UPCOMING,
+            PhraseArgs(
+                name = character.name,
+                title = next.title,
+                time = com.example.petling.ui.components.formatTime(next.startMinuteOfDay),
+            ),
+        )
+        upcomingCache = next.id to phrase
+        return phrase
+    }
 
     init {
         refresh()

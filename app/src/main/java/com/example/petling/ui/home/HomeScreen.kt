@@ -197,14 +197,36 @@ private fun SheetOption(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 
 @Composable
 private fun SpeechBubble(text: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(Dimens.RadiusLg))
-            .background(MaterialTheme.colorScheme.primaryContainer)
-            .padding(Dimens.Space4),
-    ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+    val bubbleColor = MaterialTheme.colorScheme.primaryContainer
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+        // 캐릭터를 향하는 말풍선 꼬리
+        androidx.compose.foundation.Canvas(modifier = Modifier.size(width = 18.dp, height = 9.dp)) {
+            val path = androidx.compose.ui.graphics.Path().apply {
+                moveTo(size.width / 2f, 0f)
+                lineTo(0f, size.height)
+                lineTo(size.width, size.height)
+                close()
+            }
+            drawPath(path, bubbleColor)
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Dimens.RadiusLg))
+                .background(bubbleColor)
+                .padding(Dimens.Space4),
+            contentAlignment = Alignment.Center,
+        ) {
+            // 문구가 바뀔 때 부드럽게 전환(캐릭터가 "말을 바꾸는" 느낌)
+            androidx.compose.animation.Crossfade(targetState = text, label = "speech") { t ->
+                Text(
+                    t,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
     }
 }
 
