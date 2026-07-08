@@ -25,7 +25,7 @@ import com.example.petling.data.local.entity.XpLogEntity
         CaptureEntity::class,
         CategoryEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

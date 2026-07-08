@@ -1,6 +1,7 @@
 package com.example.petling.data.local
 
 import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * Room 스키마 마이그레이션 모음.
@@ -16,14 +17,20 @@ import androidx.room.migration.Migration
 object Migrations {
 
     /**
-     * AppContainer가 databaseBuilder.addMigrations(*Migrations.ALL)로 등록한다.
-     * 출시 시점(v6)에는 비어 있다. 신규 설치는 v6 스키마로 바로 생성되므로 마이그레이션이 필요 없다.
-     * 예) v7 추가 시:
-     * val MIGRATION_6_7 = object : Migration(6, 7) {
-     *     override fun migrate(db: SupportSQLiteDatabase) {
-     *         db.execSQL("ALTER TABLE schedules ADD COLUMN note TEXT")
-     *     }
-     * }
+     * v6→v7: 호감도 시스템. DEFAULT 값은 CharacterStateEntity의 @ColumnInfo(defaultValue)와
+     * 반드시 일치해야 Room 스키마 검증을 통과한다.
+     * 기존 사용자는 affection=30(익숙)으로 시작 — 이미 키워온 관계가 갑자기 낯설어지는 퇴행 방지.
      */
-    val ALL: Array<Migration> = emptyArray()
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE character_state ADD COLUMN affection INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE character_state ADD COLUMN affectionDateEpochDay INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE character_state ADD COLUMN affectionGainedToday INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE character_state ADD COLUMN snacksToday INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE character_state SET affection = 30")
+        }
+    }
+
+    /** AppContainer가 databaseBuilder.addMigrations(*Migrations.ALL)로 등록한다. */
+    val ALL: Array<Migration> = arrayOf(MIGRATION_6_7)
 }
