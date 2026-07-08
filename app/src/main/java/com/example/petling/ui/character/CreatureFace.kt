@@ -245,5 +245,9 @@ fun irisFor(species: Species, palette: ModoriPalette): Color = when (species) {
     Species.CAT -> Color.hsl(78f, 0.42f, 0.44f)
     Species.RABBIT -> Color.hsl(18f, 0.45f, 0.30f)
     Species.CHICK -> Color(0xFF1A1512)
+    Species.DOG -> Color.hsl(25f, 0.5f, 0.28f)
+    Species.HAMSTER -> Color(0xFF1E1611)
+    Species.PENGUIN -> Color(0xFF14100D)
+    Species.PANDA -> Color(0xFF241C16)
     Species.ACORN -> Color(0xFF5A3A1E)
 }

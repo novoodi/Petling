@@ -32,6 +32,37 @@ data class ModoriPalette(
     val bodyGradient: List<Color> get() = listOf(bodyHighlight, body)
 
     companion object {
+        /**
+         * 종별 특례 팔레트. 판다·펭귄은 흑백 마킹 고정에 몸 바탕만 hue 미세 틴트(채도 상한)
+         * — 슬라이더 UX는 유지하되 "보라 판다"를 막는다.
+         */
+        fun from(hue: Float, species: com.example.petling.domain.model.Species?): ModoriPalette {
+            val base = from(hue)
+            return when (species) {
+                com.example.petling.domain.model.Species.PANDA -> base.copy(
+                    body = desat(hue, 0.06f, 0.90f),
+                    bodyShadow = desat(hue, 0.08f, 0.78f),
+                    bodyHighlight = desat(hue, 0.04f, 0.96f),
+                    belly = Color(0xFFF7F4EE),
+                    marking = Color(0xFF2F2C2A),
+                    nose = Color(0xFF241C16),
+                )
+                com.example.petling.domain.model.Species.PENGUIN -> base.copy(
+                    body = desat(hue, 0.10f, 0.30f), // 등·머리 다크 슬레이트
+                    bodyShadow = desat(hue, 0.10f, 0.22f),
+                    bodyHighlight = desat(hue, 0.10f, 0.40f),
+                    belly = Color(0xFFF7F4EE),
+                    marking = Color(0xFF1C1A18),
+                )
+                else -> base
+            }
+        }
+
+        private fun desat(hue: Float, s: Float, l: Float): Color {
+            val h = ((hue % 360f) + 360f) % 360f
+            return Color.hsl(h, s, l)
+        }
+
         fun from(hue: Float): ModoriPalette {
             val h = ((hue % 360f) + 360f) % 360f
             // 35° = 자연 코트 중심(브라운·러스트). 여기서 멀수록 쿨→그레이시하게.
