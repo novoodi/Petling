@@ -1,0 +1,115 @@
+package com.example.petling.ui.home
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.petling.data.repository.CharacterRepository
+import com.example.petling.data.repository.CompletionResult
+import com.example.petling.data.repository.ScheduleRepository
+import com.example.petling.domain.AppClock
+import com.example.petling.domain.engine.GrowthStateMachine
+import com.example.petling.domain.model.CharacterState
+import com.example.petling.domain.model.GrowthStage
+import com.example.petling.domain.model.Schedule
+import com.example.petling.domain.personality.PhraseArgs
+import com.example.petling.domain.personality.PhraseContext
+import com.example.petling.domain.personality.PhraseSelector
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+data class HomeUiState(
+    val character: CharacterState? = null,
+    val todaySchedules: List<Schedule> = emptyList(),
+    val greeting: String = "",
+    val nextStageTarget: Int? = null,
+    val progressInStage: Int = 0,
+)
+
+sealed interface HomeEvent {
+    data class XpGained(val amount: Int, val message: String) : HomeEvent
+    data class Evolved(val stage: GrowthStage, val message: String) : HomeEvent
+}
+
+class HomeViewModel(
+    private val scheduleRepository: ScheduleRepository,
+    private val characterRepository: CharacterRepository,
+    private val clock: AppClock,
+    private val phraseSelector: PhraseSelector = PhraseSelector(),
+) : ViewModel() {
+
+    private val _greeting = MutableStateFlow("")
+    private val _events = Channel<HomeEvent>(Channel.BUFFERED)
+    val events: Flow<HomeEvent> = _events.receiveAsFlow()
+
+    val uiState: StateFlow<HomeUiState> = combine(
+        characterRepository.characterState,
+        scheduleRepository.observeByDate(clock.today()),
+        _greeting,
+    ) { character, todays, greeting ->
+        HomeUiState(
+            character = character,
+            todaySchedules = todays,
+            greeting = greeting,
+            nextStageTarget = character?.let { nextTarget(it.stage) },
+            progressInStage = character?.captureCount ?: 0,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
+
+    init {
+        refresh()
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            scheduleRepository.sweepMissed()
+            val wasAway = characterRepository.refreshDailyState()
+            val character = characterRepository.get()
+            if (character != null) {
+                val ctx = if (wasAway) PhraseContext.RETURN_WELCOME else PhraseContext.DAILY_GREETING
+                _greeting.value = phraseSelector.pick(
+                    character.personality,
+                    ctx,
+                    PhraseArgs(name = character.name),
+                )
+            }
+        }
+    }
+
+    fun complete(schedule: Schedule) {
+        viewModelScope.launch {
+            val character = characterRepository.get() ?: return@launch
+            val result = characterRepository.completeSchedule(schedule) ?: return@launch
+            emitCompletionFeedback(schedule, result, character.name, character.personality)
+        }
+    }
+
+    private suspend fun emitCompletionFeedback(
+        schedule: Schedule,
+        result: CompletionResult,
+        name: String,
+        personality: com.example.petling.domain.model.Personality,
+    ) {
+        val ctx = if (schedule.isImportant) PhraseContext.COMPLETED_IMPORTANT else PhraseContext.COMPLETED
+        val msg = phraseSelector.pick(personality, ctx, PhraseArgs(name = name, title = schedule.title))
+        _events.send(HomeEvent.XpGained(result.xpAmount, msg))
+        val t = result.transition
+        if (t is GrowthStateMachine.Transition.Advanced) {
+            val levelMsg = phraseSelector.pick(personality, PhraseContext.LEVEL_UP, PhraseArgs(name = name))
+            _events.send(HomeEvent.Evolved(t.to, levelMsg))
+        }
+    }
+
+    private fun nextTarget(stage: GrowthStage): Int? = when (stage) {
+        GrowthStage.JUVENILE -> GrowthStage.GROWTH1.requiredCompletions
+        GrowthStage.GROWTH1 -> GrowthStage.GROWTH2.requiredCompletions
+        GrowthStage.GROWTH2 -> GrowthStage.MATURE.requiredCompletions
+        else -> null
+    }
+}
