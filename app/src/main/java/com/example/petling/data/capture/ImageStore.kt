@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -34,8 +35,8 @@ class ImageStore(private val context: Context) {
             bitmap.recycle()
             file.absolutePath
         }.onFailure {
-            // TODO(H1): Crashlytics 도입 시 recordException(it)으로 승격
             Log.w(TAG, "이미지 저장 실패: $uri", it)
+            runCatching { FirebaseCrashlytics.getInstance().recordException(it) }
         }.getOrNull()
     }
 
