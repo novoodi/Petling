@@ -1,10 +1,19 @@
 package com.example.petling.ui.character
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import kotlin.math.abs
 
 /**
- * colorHue 하나에서 몸통 본색/음영/하이라이트와 깍정이(모자) 색을 파생한다.
- * HSL 기반으로 일관된 팔레트를 만들어 커스터마이징 슬라이더 하나로 전체가 변한다.
+ * colorHue 하나에서 캐릭터 전체 색을 파생한다.
+ *
+ * 실사풍(치비 실사) 방향에 맞춰, 슬라이더 hue를 그대로 쓰지 않고 "자연 코트 색"으로 매핑한다:
+ * - 브라운·러스트 계열(웜)은 채도를 살리고, 파랑·보라 계열(쿨)은 그레이시 파스텔로 눌러 네온을 막는다.
+ * - 명도는 0.60~0.66 좁은 범위로 클램프해 항상 부드러운 털 톤을 유지한다.
+ *
+ * [body]/[bodyShadow]/[bodyHighlight]는 몸통 볼륨, [belly]는 가슴·배·주둥이 크림,
+ * [earInner] 속귀, [marking] 다크 포인트(귀끝·줄무늬·깃), [iris] 기본 홍채(종별 오버라이드 가능),
+ * [nose] 코. [cap]/[capShadow]는 도토리 깍정이 전용(hue 무관 고정 브라운).
  */
 data class ModoriPalette(
     val body: Color,
@@ -13,18 +22,38 @@ data class ModoriPalette(
     val cap: Color,
     val capShadow: Color,
     val cheek: Color,
+    val belly: Color = Color(0xFFFBF5EA),
+    val earInner: Color = Color(0xFFEAB4BE),
+    val marking: Color = Color(0xFF4A3A2C),
+    val iris: Color = Color(0xFF7A4A1E),
+    val nose: Color = Color(0xFF3A2E28),
 ) {
+    /** 몸통 볼륨 표현용 세로 그라디언트 색(위=하이라이트 → 아래=본색). */
+    val bodyGradient: List<Color> get() = listOf(bodyHighlight, body)
+
     companion object {
         fun from(hue: Float): ModoriPalette {
             val h = ((hue % 360f) + 360f) % 360f
+            // 35° = 자연 코트 중심(브라운·러스트). 여기서 멀수록 쿨→그레이시하게.
+            val dist = abs((((h - 35f) + 540f) % 360f) - 180f) // 0(=35°)..180(반대)
+            val warmth = 1f - dist / 180f
+            val s = 0.20f + 0.35f * warmth
+            val l = 0.60f + 0.06f * (1f - warmth * 0.5f)
+
+            val bodyC = hsl(h, s, l)
             return ModoriPalette(
-                body = hsl(h, 0.55f, 0.62f),
-                bodyShadow = hsl(h, 0.50f, 0.50f),
-                bodyHighlight = hsl(h, 0.60f, 0.75f),
-                // 깍정이(도토리 모자)는 따뜻한 브라운 고정 계열
+                body = bodyC,
+                bodyShadow = hsl(h, (s + 0.06f).coerceAtMost(0.62f), l - 0.13f),
+                bodyHighlight = hsl(h, (s - 0.06f).coerceAtLeast(0.10f), l + 0.09f),
+                // 깍정이(도토리 모자)는 hue 무관 따뜻한 브라운 고정
                 cap = hsl(28f, 0.45f, 0.38f),
                 capShadow = hsl(28f, 0.45f, 0.30f),
-                cheek = hsl((h + 10f) % 360f, 0.70f, 0.72f),
+                cheek = hsl(8f, 0.55f, 0.78f), // 볼터치는 hue 무관 웜 핑크 고정
+                belly = hsl(h, 0.08f + 0.08f * warmth, 0.93f),
+                earInner = lerp(hsl(8f, 0.42f, 0.80f), bodyC, 0.25f),
+                marking = hsl(h, s * 0.7f, 0.28f),
+                iris = hsl(38f, 0.55f, 0.42f), // 앰버 기본(종별로 드로잉에서 오버라이드)
+                nose = hsl(h, 0.25f, 0.24f),
             )
         }
 
