@@ -117,18 +117,56 @@ class CanvasCharacterRenderer : CharacterRenderer {
             label = "bounce",
         )
 
+        // 잰걸음(WALK): 뒤뚱·발딛기 위상
+        val walkPhase by transition.animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(420, easing = LinearEasing), RepeatMode.Restart),
+            label = "walk",
+        )
+
+        // 깊고 느린 숨(SLEEP)
+        val sleepBreathe by transition.animateFloat(
+            initialValue = -1f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(3800), RepeatMode.Reverse),
+            label = "sleepBreathe",
+        )
+
         Canvas(modifier = modifier) {
             val base = size.minDimension
             val idle = spec.animation == CharacterAnimation.IDLE
             val bouncing = spec.animation == CharacterAnimation.BOUNCE
+            val walking = spec.animation == CharacterAnimation.WALK
+            val sleeping = spec.animation == CharacterAnimation.SLEEP
 
             var dy = 0f
             var scaleX = 1f
             var scaleY = 1f
             var tilt = 0f
             var motion = CreatureMotion.STATIC
+            var eyeBlink = blink
 
-            if (idle) {
+            if (walking) {
+                val s = sin(walkPhase * 2 * PI).toFloat()
+                val stride = abs(s)
+                dy = -stride * base * 0.02f
+                tilt = s * 4f
+                scaleY = 1f - stride * 0.03f
+                scaleX = 1f + stride * 0.02f
+                motion = CreatureMotion(
+                    tailWag = walkPhase,
+                    breathe = bob,
+                    effectPhase = effectPhase,
+                )
+            } else if (sleeping) {
+                dy = sleepBreathe * base * 0.022f
+                tilt = 2.5f
+                scaleY = 1f + sleepBreathe * 0.02f
+                eyeBlink = maxOf(blink, 0.9f) // 완전 감김
+                motion = CreatureMotion(
+                    breathe = sleepBreathe,
+                    effectPhase = effectPhase,
+                )
+            } else if (idle) {
                 dy = bob * base * 0.015f
                 tilt = sway * 2.2f
                 if (hop > 0f) {
@@ -169,7 +207,7 @@ class CanvasCharacterRenderer : CharacterRenderer {
                             expression = spec.expression,
                             palette = palette,
                             eyeStyle = spec.eyeStyle,
-                            blink = blink,
+                            blink = eyeBlink,
                             motion = motion,
                         )
                     }
