@@ -79,6 +79,7 @@ class YardState {
     val y = Animatable(0f)      // 0=착지, 음수=들림
     val dust = Animatable(0f)   // 착지 먼지 0..1
     val squash = Animatable(0f) // 착지 스쿼시 0..1
+    val turn = Animatable(1f)   // 몸돌리기 가로 스쿼시(정면↔옆모습 전환·방향 반전)
     var behavior by mutableStateOf(YardBehavior.PAUSE)
     var facingLeft by mutableStateOf(false)
     var dragging by mutableStateOf(false)
@@ -165,7 +166,7 @@ fun RoamingYard(
                 .size(SPRITE)
                 .offset { IntOffset(state.x.value.roundToInt(), state.y.value.roundToInt()) }
                 .graphicsLayer {
-                    scaleX = if (state.facingLeft) -1f else 1f
+                    scaleX = (if (state.facingLeft) -1f else 1f) * state.turn.value
                     rotationZ = if (state.dragging) wobble * 8f else 0f
                     val sq = state.squash.value
                     if (sq > 0f) {
@@ -259,12 +260,26 @@ private suspend fun roamLoop(
             is YardEvent.Celebrate -> YardBehavior.CELEBRATE
             null -> chooseNext(lastBehavior, moodProvider.value)
         }
-        state.behavior = behavior
         val interrupt = raceEvents(state) {
+            setBehavior(state, behavior)
             execute(state, behavior, ev, rangePx, moodProvider.value, speedWalk, speedHappy, speedTired, speedRun, jumpPx)
         }
+        // 전환 스쿼시 중 선점되면 눌린 채로 남지 않게 복원
+        if (state.turn.value != 1f) state.turn.snapTo(1f)
         pending = interrupt
         lastBehavior = if (behavior == YardBehavior.WALK || behavior == YardBehavior.PAUSE) behavior else YardBehavior.PAUSE
+    }
+}
+
+/** 정면↔옆모습(WALK) 경계를 넘을 때 짧은 가로 스쿼시로 "몸을 돌리는" 전환. */
+private suspend fun setBehavior(state: YardState, new: YardBehavior) {
+    val crossing = (state.behavior == YardBehavior.WALK) != (new == YardBehavior.WALK)
+    if (crossing) {
+        state.turn.animateTo(0.15f, tween(90, easing = LinearEasing))
+        state.behavior = new
+        state.turn.animateTo(1f, tween(90, easing = LinearEasing))
+    } else {
+        state.behavior = new
     }
 }
 
@@ -345,9 +360,9 @@ private suspend fun execute(
         YardBehavior.SLEEP -> {
             // 가까운 가장자리로 걸어가 눕기
             val edge = if (state.x.value < rangePx / 2f) rangePx * 0.12f else rangePx * 0.88f
-            state.behavior = YardBehavior.WALK
+            setBehavior(state, YardBehavior.WALK)
             walkTo(state, edge, speedTired)
-            state.behavior = YardBehavior.SLEEP
+            setBehavior(state, YardBehavior.SLEEP)
             delay(Random.nextLong(8000, 20000))
         }
         YardBehavior.REACT -> {
@@ -391,7 +406,13 @@ private fun randomTarget(current: Float, rangePx: Float): Float {
 private suspend fun walkTo(state: YardState, target: Float, speedPxPerSec: Float) {
     val dist = abs(target - state.x.value)
     if (dist < 1f) return
-    state.facingLeft = target < state.x.value
+    val newFacing = target < state.x.value
+    if (newFacing != state.facingLeft) {
+        // 걷는 중 방향 반전도 몸돌리기 스쿼시로
+        state.turn.animateTo(0.3f, tween(70, easing = LinearEasing))
+        state.facingLeft = newFacing
+        state.turn.animateTo(1f, tween(70, easing = LinearEasing))
+    }
     val dur = (dist / speedPxPerSec * 1000f).toInt().coerceIn(120, 6000)
     state.x.animateTo(target, tween(dur, easing = LinearEasing))
 }

@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import com.example.petling.domain.model.Species
 import androidx.compose.ui.graphics.drawscope.rotate
 import kotlin.math.PI
 import kotlin.math.sin
@@ -69,4 +70,59 @@ internal fun DrawScope.drawFox(
             )
         }
     }
+}
+
+/** 여우 옆모습(보행): 풍성한 수평 꼬리(흰 끝) + 삼각귀 + 쐐기 주둥이 + 다크 삭스. */
+internal fun DrawScope.drawFoxSide(
+    p: (Float, Float) -> Offset,
+    d: (Float) -> Float,
+    palette: ModoriPalette,
+    sp: SideProportions,
+    pose: FacePose,
+    motion: CreatureMotion,
+    eyeStyle: Int,
+    blink: Float,
+    lod: Lod,
+) {
+    val phi = motion.walkCycle
+    val gait = gaitFor(Species.FOX)
+
+    // 꼬리(맨 뒤): 몸 뒤로 수평, 끝이 살짝 들리고 walkCycle에 맞춰 출렁
+    val rearX = sp.bodyCx - sp.bodyHalfLen * 0.9f
+    val tailLift = sin(motion.tailWag * 2 * PI).toFloat() * 0.02f + pose.tailLift * 0.02f
+    val n = 9
+    for (i in 0..n) {
+        val t = i / n.toFloat()
+        val tx = rearX - t * 0.20f
+        val ty = sp.bodyCy - t * (0.05f + tailLift)
+        val r = 0.045f * (0.7f + 0.6f * sin((t * Math.PI).toFloat()))
+        val col = if (t > 0.75f) palette.belly else palette.body
+        drawCircle(col, radius = d(r), center = p(tx, ty))
+    }
+
+    drawQuadrupedCore(p, d, palette, sp, phi, gait, lod)
+
+    // 다크 삭스(근측 발 강조는 core의 footColor 대신 marking으로 이미 어두움 — 발끝 위 살짝)
+    // 귀(머리 위 삼각)
+    val earBase = sp.headCy - sp.headR * 0.72f
+    triangle(
+        p(sp.headCx - sp.headR * 0.15f, earBase + 0.02f),
+        p(sp.headCx + sp.headR * 0.45f, earBase + 0.02f),
+        p(sp.headCx + sp.headR * (0.15f - pose.earBack * 0.3f), earBase - sp.headR * (0.85f * (1f - pose.earDroop * 0.6f))),
+        palette.body,
+    )
+    triangle(
+        p(sp.headCx - sp.headR * 0.02f, earBase + 0.01f),
+        p(sp.headCx + sp.headR * 0.32f, earBase + 0.01f),
+        p(sp.headCx + sp.headR * 0.13f, earBase - sp.headR * 0.55f),
+        palette.marking,
+    )
+
+    // 주둥이(머리 앞 쐐기 + 코)
+    val mzX = sp.headCx + sp.headR * 0.9f
+    val mzY = sp.headCy + sp.headR * 0.18f
+    drawOval(palette.belly, topLeft = p(sp.headCx + sp.headR * 0.35f, mzY - sp.headR * 0.28f), size = Size(d(sp.headR * 0.75f), d(sp.headR * 0.5f)))
+    drawCircle(palette.nose, radius = d(sp.headR * 0.10f), center = p(mzX + sp.headR * 0.08f, mzY - sp.headR * 0.06f))
+
+    drawSideFace(p, d, palette, sp.headCx, sp.headCy, sp.headR, pose, irisFor(Species.FOX, palette), eyeStyle, blink, lod)
 }

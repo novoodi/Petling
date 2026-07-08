@@ -32,6 +32,7 @@ fun DrawScope.drawCreature(
     crackProgress: Float = 0f,
     hatchAlpha: Float = 1f,
     motion: CreatureMotion = CreatureMotion.STATIC,
+    view: CreatureView = CreatureView.FRONT,
 ) {
     val s = size.minDimension
     val origin = Offset((size.width - s) / 2f, (size.height - s) / 2f)
@@ -51,8 +52,23 @@ fun DrawScope.drawCreature(
         return
     }
 
-    val prop = proportionsFor(species, stage)
     val pose = poseFor(expression)
+
+    // 옆모습(보행). ACORN은 옆모습이 없어(구르기 이동) FRONT로 폴백.
+    if (view == CreatureView.SIDE && species != Species.ACORN) {
+        val sp = sideProportionsFor(species, stage)
+        when (species) {
+            Species.FOX -> drawFoxSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
+            Species.CAT -> drawCatSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
+            Species.RABBIT -> drawRabbitSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
+            Species.CHICK -> drawChickSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
+            Species.ACORN -> Unit
+        }
+        // 액세서리·기분 이펙트는 정면 전용(보행은 수 초의 과도 상태)
+        return
+    }
+
+    val prop = proportionsFor(species, stage)
     val iris = irisFor(species, palette)
 
     when (species) {
