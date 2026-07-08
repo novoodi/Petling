@@ -2,7 +2,8 @@ package com.example.petling.domain.model
 
 /**
  * 동물 종류. 온보딩 부화(랜덤)로 하나를 만나 키운다.
- * [defaultHue]는 몸 색상 슬라이더의 기본값(사용자가 바꿀 수 있음).
+ * [defaultHue]는 액센트 색 슬라이더의 기본값(사용자가 바꿀 수 있음) — 리디자인 이후 몸은 종 고유
+ * 코트 컬러로 고정되고, hue는 목걸이·밴다나·화관 같은 소품에만 입힌다.
  * [pickable]=false인 종(도토리)은 부화 풀에서 제외 — 기존 사용자 렌더 호환용 레거시/마스코트.
  */
 enum class Species(val displayName: String, val emoji: String, val defaultHue: Float, val pickable: Boolean = true) {
@@ -11,7 +12,7 @@ enum class Species(val displayName: String, val emoji: String, val defaultHue: F
     CAT("고양이", "🐱", 265f),
     RABBIT("토끼", "🐰", 336f),
     CHICK("병아리", "🐤", 46f),
-    DOG("강아지", "🐶", 30f),
+    DOG("강아지", "🐶", 358f), // 기본 액센트=빨간 목걸이
     HAMSTER("햄스터", "🐹", 38f),
     PENGUIN("펭귄", "🐧", 210f),
     PANDA("판다", "🐼", 45f),

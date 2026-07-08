@@ -41,6 +41,7 @@ internal fun DrawScope.drawEgg(
         endY = p(cx, botY).y,
     )
     drawPath(path, brush, style = Fill)
+    drawPath(path, palette.outline.copy(alpha = alpha), style = outlineStroke(d))
     // 하단 반사광
     drawOval(palette.bodyHighlight.copy(alpha = alpha * 0.4f), topLeft = p(cx - halfW * 0.5f, botY - 0.14f), size = Size(d(halfW), d(0.06f)))
     // 상단 하이라이트

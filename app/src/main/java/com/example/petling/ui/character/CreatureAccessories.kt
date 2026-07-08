@@ -11,11 +11,8 @@ import com.example.petling.domain.model.GrowthStage
 import com.example.petling.domain.model.Species
 
 private val GLASS = Color(0xFF6B5A44)
-private val BANDANA = Color(0xFF4FA9C4)
-private val BANDANA_DK = Color(0xFF3C8AA3)
 private val LEAF = Color(0xFF6BBF59)
 private val LEAF_DK = Color(0xFF4E9E42)
-private val FLOWER = Color(0xFFF4A7C0)
 private val FLOWER_CTR = Color(0xFFFFD25E)
 private val CROWN_LEAF = Color(0xFF57A84A)
 
@@ -35,12 +32,12 @@ internal fun DrawScope.drawStageAccessories(
     if (branchVisible && branch != null) {
         when (branch) {
             Branch.STUDY -> drawGlasses(p, d, fp, lod)
-            Branch.HOBBY -> drawBandana(p, d, prop)
+            Branch.HOBBY -> drawBandana(p, d, palette, prop)
             Branch.BALANCED -> drawLeafSprig(p, d, prop)
         }
     }
     if (stage == GrowthStage.MATURE) {
-        if (species == Species.ACORN) drawLeafCrown(p, d, prop) else drawFlowerCrown(p, d, prop)
+        if (species == Species.ACORN) drawLeafCrown(p, d, prop) else drawFlowerCrown(p, d, palette, prop)
     }
 }
 
@@ -61,14 +58,14 @@ private fun DrawScope.drawGlasses(
     drawLine(GLASS, p(cx - gap + r * 0.7f, eyeCy), p(cx + gap - r * 0.7f, eyeCy), strokeWidth = d(0.009f))
 }
 
-private fun DrawScope.drawBandana(p: (Float, Float) -> Offset, d: (Float) -> Float, prop: Proportions) {
+private fun DrawScope.drawBandana(p: (Float, Float) -> Offset, d: (Float) -> Float, palette: ModoriPalette, prop: Proportions) {
     val cx = 0.5f
     val neckY = prop.headCy + prop.headR * 0.95f
-    // 목을 감싸는 밴드
-    drawArc(BANDANA, 20f, 140f, false, topLeft = p(cx - prop.headR * 0.75f, neckY - prop.headR * 0.35f), size = Size(d(prop.headR * 1.5f), d(prop.headR * 0.7f)), style = Stroke(d(0.05f)))
+    // 목을 감싸는 밴드(사용자 colorHue 액센트)
+    drawArc(palette.accent, 20f, 140f, false, topLeft = p(cx - prop.headR * 0.75f, neckY - prop.headR * 0.35f), size = Size(d(prop.headR * 1.5f), d(prop.headR * 0.7f)), style = Stroke(d(0.05f)))
     // 매듭
-    drawCircle(BANDANA_DK, radius = d(prop.headR * 0.14f), center = p(cx - prop.headR * 0.5f, neckY))
-    triangle(p(cx - prop.headR * 0.6f, neckY + prop.headR * 0.05f), p(cx - prop.headR * 0.4f, neckY + prop.headR * 0.05f), p(cx - prop.headR * 0.55f, neckY + prop.headR * 0.35f), BANDANA_DK)
+    drawCircle(palette.accentDark, radius = d(prop.headR * 0.14f), center = p(cx - prop.headR * 0.5f, neckY))
+    triangle(p(cx - prop.headR * 0.6f, neckY + prop.headR * 0.05f), p(cx - prop.headR * 0.4f, neckY + prop.headR * 0.05f), p(cx - prop.headR * 0.55f, neckY + prop.headR * 0.35f), palette.accentDark)
 }
 
 private fun DrawScope.drawLeafSprig(p: (Float, Float) -> Offset, d: (Float) -> Float, prop: Proportions) {
@@ -80,16 +77,18 @@ private fun DrawScope.drawLeafSprig(p: (Float, Float) -> Offset, d: (Float) -> F
     }
 }
 
-private fun DrawScope.drawFlowerCrown(p: (Float, Float) -> Offset, d: (Float) -> Float, prop: Proportions) {
+private fun DrawScope.drawFlowerCrown(p: (Float, Float) -> Offset, d: (Float) -> Float, palette: ModoriPalette, prop: Proportions) {
     val cx = 0.5f
     val crownY = prop.headCy - prop.headR * 0.9f
+    // 꽃잎은 사용자 colorHue 액센트를 밝게 눌러 사용
+    val petal = androidx.compose.ui.graphics.lerp(palette.accent, Color.White, 0.35f)
     listOf(-0.55f, 0f, 0.55f).forEach { t ->
         val fx = cx + t * prop.headR
         val fy = crownY + t * t * prop.headR * 0.3f
         // 5꽃잎
         for (i in 0 until 5) {
             val a = i * (2.0 * Math.PI / 5.0)
-            drawCircle(FLOWER, radius = d(prop.headR * 0.10f), center = p(fx + prop.headR * 0.11f * kotlin.math.cos(a).toFloat(), fy + prop.headR * 0.11f * kotlin.math.sin(a).toFloat()))
+            drawCircle(petal, radius = d(prop.headR * 0.10f), center = p(fx + prop.headR * 0.11f * kotlin.math.cos(a).toFloat(), fy + prop.headR * 0.11f * kotlin.math.sin(a).toFloat()))
         }
         drawCircle(FLOWER_CTR, radius = d(prop.headR * 0.07f), center = p(fx, fy))
     }
