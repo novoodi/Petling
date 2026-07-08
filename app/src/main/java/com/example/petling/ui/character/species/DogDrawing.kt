@@ -79,13 +79,13 @@ internal fun DrawScope.drawDogSide(
     val phi = motion.walkCycle
     val gait = gaitFor(Species.DOG)
 
-    // 말린 꼬리(엉덩이 위 나선 근사: 원 두 개)
-    val tailX = sp.bodyCx - sp.bodyHalfLen * 0.95f
-    val tailY = sp.bodyCy - sp.bodyHalfHt * 0.9f
+    // 말린 꼬리(엉덩이 끝에 붙은 나선 근사) — 몸 실루엣에 겹치게
+    val tailX = sp.bodyCx - sp.bodyHalfLen * 1.02f
+    val tailY = sp.bodyCy - sp.bodyHalfHt * 0.55f
     val wag = sin(motion.tailWag * 2 * PI).toFloat() * 10f
-    rotate(wag, pivot = p(tailX, tailY + 0.03f)) {
-        drawCircle(palette.body, radius = d(0.045f), center = p(tailX, tailY))
-        drawCircle(palette.bodyHighlight.copy(alpha = 0.55f), radius = d(0.02f), center = p(tailX, tailY - 0.01f))
+    rotate(wag, pivot = p(tailX + 0.02f, tailY + 0.03f)) {
+        drawCircle(palette.body, radius = d(0.048f), center = p(tailX, tailY))
+        drawCircle(palette.bodyHighlight.copy(alpha = 0.55f), radius = d(0.022f), center = p(tailX, tailY - 0.012f))
     }
 
     drawQuadrupedCore(p, d, palette, sp, phi, gait, lod)

@@ -125,14 +125,17 @@ internal fun DrawScope.drawChickSide(
     val phi = motion.walkCycle
     val gait = gaitFor(Species.CHICK)
 
-    // 꽁지 솜털(뒤)
-    listOf(0.0f, 0.12f).forEach { t ->
-        drawCircle(
-            palette.bodyShadow.copy(alpha = 0.8f),
-            radius = d(0.035f - t * 0.1f),
-            center = p(sp.bodyCx - sp.bodyHalfLen * 1.05f - t * 0.2f, sp.bodyCy - sp.bodyHalfHt * 0.15f - t),
-        )
-    }
+    // 꽁지 솜털(뒤) — 몸 뒤에 붙은 작은 깃 두 개
+    drawCircle(
+        palette.bodyShadow.copy(alpha = 0.8f),
+        radius = d(0.032f),
+        center = p(sp.bodyCx - sp.bodyHalfLen * 1.05f, sp.bodyCy - sp.bodyHalfHt * 0.1f),
+    )
+    drawCircle(
+        palette.bodyShadow.copy(alpha = 0.7f),
+        radius = d(0.022f),
+        center = p(sp.bodyCx - sp.bodyHalfLen * 1.25f, sp.bodyCy - sp.bodyHalfHt * 0.3f),
+    )
 
     drawBipedCore(p, d, palette, sp, phi, gait, BEAK_DARK, lod)
 
