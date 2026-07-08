@@ -6,6 +6,8 @@ import com.example.petling.data.repository.CharacterRepository
 import com.example.petling.data.repository.CompletionResult
 import com.example.petling.data.repository.ScheduleRepository
 import com.example.petling.domain.AppClock
+import com.example.petling.domain.engine.AffectionLevel
+import com.example.petling.domain.engine.AffectionRules
 import com.example.petling.domain.engine.GrowthStateMachine
 import com.example.petling.domain.model.CharacterState
 import com.example.petling.domain.model.GrowthStage
@@ -30,11 +32,15 @@ data class HomeUiState(
     val greeting: String = "",
     val nextStageTarget: Int? = null,
     val progressInStage: Int = 0,
+    val snacksRemaining: Int = 0,
 )
 
 sealed interface HomeEvent {
     data class XpGained(val amount: Int, val message: String) : HomeEvent
     data class Evolved(val stage: GrowthStage, val message: String) : HomeEvent
+    data class AffectionLevelUp(val level: AffectionLevel, val message: String) : HomeEvent
+    /** 간식 던짐 — 마당 낙하 위치(0..1). */
+    data class SnackGiven(val xFraction: Float) : HomeEvent
 }
 
 class HomeViewModel(
@@ -62,8 +68,16 @@ class HomeViewModel(
             greeting = speechFor(character, todays, greeting),
             nextStageTarget = character?.let { nextTarget(it.stage) },
             progressInStage = character?.captureCount ?: 0,
+            snacksRemaining = character?.let { snacksRemaining(it) } ?: 0,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
+
+    private fun snacksRemaining(character: CharacterState): Int =
+        if (character.affectionDateEpochDay != clock.today().toEpochDay()) {
+            AffectionRules.SNACKS_PER_DAY
+        } else {
+            (AffectionRules.SNACKS_PER_DAY - character.snacksToday).coerceAtLeast(0)
+        }
 
     /**
      * 캐릭터가 할 말을 고른다: 오늘 남은(미완료·시간 있는) 일정이 있으면
@@ -113,8 +127,34 @@ class HomeViewModel(
                     ctx,
                     PhraseArgs(name = character.name),
                 )
+                refresh.affectionLevelUp?.let { emitAffectionUp(it, character) }
             }
         }
+    }
+
+    /** 간식 주기. 하루 한도 소진이면 무시. */
+    fun giveSnack() {
+        viewModelScope.launch {
+            val character = characterRepository.get() ?: return@launch
+            val result = characterRepository.giveSnack() ?: return@launch
+            _greeting.value = phraseSelector.pick(
+                character.personality,
+                PhraseContext.SNACK,
+                PhraseArgs(name = character.name),
+            )
+            _events.send(HomeEvent.SnackGiven(xFraction = 0.15f + kotlin.random.Random.nextFloat() * 0.7f))
+            result.affectionLevelUp?.let { emitAffectionUp(it, character) }
+        }
+    }
+
+    private suspend fun emitAffectionUp(level: AffectionLevel, character: CharacterState) {
+        val msg = phraseSelector.pick(
+            character.personality,
+            PhraseContext.AFFECTION_UP,
+            PhraseArgs(name = character.name),
+        )
+        _greeting.value = msg
+        _events.send(HomeEvent.AffectionLevelUp(level, msg))
     }
 
     fun complete(schedule: Schedule) {
@@ -122,6 +162,7 @@ class HomeViewModel(
             val character = characterRepository.get() ?: return@launch
             val result = characterRepository.completeSchedule(schedule) ?: return@launch
             emitCompletionFeedback(schedule, result, character.name, character.personality)
+            result.affectionLevelUp?.let { emitAffectionUp(it, character) }
         }
     }
 

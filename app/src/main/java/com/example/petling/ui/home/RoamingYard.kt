@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -38,10 +39,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.example.petling.domain.engine.AffectionLevel
 import com.example.petling.domain.model.CharacterAnimation
 import com.example.petling.domain.model.CharacterSpec
 import com.example.petling.domain.model.Expression
 import com.example.petling.domain.model.Mood
+import com.example.petling.domain.model.Species
 import com.example.petling.ui.character.LocalCharacterRenderer
 import com.example.petling.ui.theme.Motion
 import kotlinx.coroutines.channels.Channel
@@ -59,31 +62,34 @@ import kotlin.random.Random
 private val SPRITE = 140.dp
 private val YARD = 200.dp
 
-/** 마당 로밍 캐릭터의 행동 상태. 렌더 스펙(애니메이션/표정/기분) 오버라이드를 결정한다. */
-enum class YardBehavior { PAUSE, WALK, HOP, SLEEP, REACT, DRAG, FALL, CELEBRATE }
-
-/** 외부(탭/드래그/일정완료)에서 로밍 루프로 보내는 선점 이벤트. */
+/** 외부(탭/드래그/일정완료/앱재개/간식)에서 로밍 루프로 보내는 선점 이벤트. */
 sealed interface YardEvent {
     data object Tap : YardEvent
     data object Drop : YardEvent
+    data object Greet : YardEvent
     data class Celebrate(val evolved: Boolean) : YardEvent
+    data class Snack(val xFraction: Float) : YardEvent
 }
 
 /**
- * 마당 캐릭터의 위치·상태 홀더. HomeScreen에서 remember해 말풍선 꼬리 앵커로도 공유한다.
+ * 마당 캐릭터의 위치·상태 홀더. NavHost에서 remember해 전 탭이 공유한다.
  * 모든 위치 애니메이션(animateTo)은 로밍 루프가 단독 소유하고, 드래그는 snapTo만 쓴다.
+ * 주의: events는 CONFLATED — 동시 다발 이벤트(Greet/Snack/Celebrate)는 마지막 것만 남는다(저빈도 허용).
  */
 @Stable
 class YardState {
-    val x = Animatable(0f)      // 스프라이트 좌측 edge px(마당 로컬)
-    val y = Animatable(0f)      // 0=착지, 음수=들림
-    val dust = Animatable(0f)   // 착지 먼지 0..1
-    val squash = Animatable(0f) // 착지 스쿼시 0..1
-    val turn = Animatable(1f)   // 몸돌리기 가로 스쿼시(정면↔옆모습 전환·방향 반전)
+    val x = Animatable(0f)        // 스프라이트 좌측 edge px(마당 로컬)
+    val y = Animatable(0f)        // 0=착지, 음수=들림
+    val dust = Animatable(0f)     // 착지 먼지 0..1
+    val squash = Animatable(0f)   // 착지 스쿼시 0..1
+    val turn = Animatable(1f)     // 몸돌리기 가로 스쿼시(정면↔옆모습·방향 반전)
+    val rotation = Animatable(0f) // 데굴데굴(도토리 ROLL)
+    val snackDrop = Animatable(0f) // 간식 낙하 0..1
     var behavior by mutableStateOf(YardBehavior.PAUSE)
     var facingLeft by mutableStateOf(false)
     var dragging by mutableStateOf(false)
     var spritePx by mutableFloatStateOf(0f)
+    var snackX by mutableStateOf<Float?>(null) // 바닥 간식 중심 x(px). null=없음
     val events = Channel<YardEvent>(Channel.CONFLATED)
 
     /** 말풍선 꼬리가 따라올 캐릭터 중심 x(px). */
@@ -97,38 +103,72 @@ class YardState {
 @Composable
 fun rememberYardState(): YardState = remember { YardState() }
 
-/** 렌더 스펙: 기본 스펙에 행동별 애니메이션/표정/기분 오버라이드를 얹는다(저장 안 함). */
-private fun specFor(base: CharacterSpec, behavior: YardBehavior): CharacterSpec = when (behavior) {
-    YardBehavior.PAUSE -> base
+/** 로밍 루프가 참조하는 캐릭터 컨텍스트(종·기분·호감도). */
+data class YardContext(val species: Species, val mood: Mood, val affection: Int) {
+    val level: AffectionLevel get() = affectionLevel(affection)
+}
+
+/** 마당 치수·속도(px). */
+private class YardDims(
+    val rangePx: Float,
+    val yMinPx: Float,
+    val hidePx: Float,
+    val jumpPx: Float,
+    val dp1: Float, // 1dp의 px
+) {
+    fun speed(style: WalkStyle, mood: Mood): Float {
+        val mul = when (mood) {
+            Mood.HAPPY -> 1.2f
+            Mood.TIRED -> 0.7f
+            Mood.CALM -> 1f
+        }
+        return walkSpeedDp(style) * dp1 * mul
+    }
+
+    val runSpeed: Float get() = 130f * dp1
+}
+
+/** 렌더 스펙: 행동·컨텍스트별 애니메이션/표정/기분 오버라이드(저장 안 함). */
+private fun specFor(base: CharacterSpec, behavior: YardBehavior, ctx: YardContext): CharacterSpec = when (behavior) {
+    YardBehavior.PAUSE, YardBehavior.GREET -> base
     YardBehavior.WALK -> base.copy(animation = CharacterAnimation.WALK)
-    YardBehavior.HOP -> base.copy(
+    YardBehavior.HOP, YardBehavior.CELEBRATE -> base.copy(
         animation = CharacterAnimation.BOUNCE,
         mood = Mood.HAPPY,
-        expression = if (base.mood == Mood.HAPPY) Expression.EXCITED else Expression.HAPPY,
+        expression = Expression.EXCITED,
+    )
+    YardBehavior.BINKY -> base.copy(
+        animation = CharacterAnimation.BOUNCE,
+        mood = Mood.HAPPY,
+        expression = Expression.EXCITED,
     )
     YardBehavior.SLEEP -> base.copy(
         animation = CharacterAnimation.SLEEP,
         mood = Mood.TIRED,
         expression = Expression.SLEEPY,
     )
-    YardBehavior.REACT -> base.copy(mood = Mood.HAPPY, expression = Expression.EXCITED)
+    YardBehavior.REACT -> when (reactStyleFor(ctx.species, ctx.level)) {
+        ReactStyle.COOL -> base.copy(expression = Expression.NEUTRAL)
+        ReactStyle.STARTLE_DASH, ReactStyle.STARTLE_HIDE -> base.copy(expression = Expression.WORRIED)
+        else -> base.copy(mood = Mood.HAPPY, expression = Expression.EXCITED)
+    }
     YardBehavior.DRAG, YardBehavior.FALL -> base.copy(expression = Expression.WORRIED)
-    YardBehavior.CELEBRATE -> base.copy(
-        animation = CharacterAnimation.BOUNCE,
-        mood = Mood.HAPPY,
-        expression = Expression.EXCITED,
-    )
+    YardBehavior.PEEK -> base.copy(expression = Expression.NEUTRAL)
+    YardBehavior.GROOM -> base.copy(animation = CharacterAnimation.GROOM, expression = Expression.NEUTRAL)
+    YardBehavior.PECK -> base.copy(animation = CharacterAnimation.PECK)
+    YardBehavior.EAT -> base.copy(animation = CharacterAnimation.EAT, expression = Expression.HAPPY, mood = Mood.HAPPY)
 }
 
 @Composable
 fun RoamingYard(
     baseSpec: CharacterSpec,
+    affection: Int,
     state: YardState,
     modifier: Modifier = Modifier,
 ) {
     val renderer = LocalCharacterRenderer.current
     val density = LocalDensity.current
-    val moodProvider = rememberUpdatedState(baseSpec.mood)
+    val ctxProvider = rememberUpdatedState(YardContext(baseSpec.species, baseSpec.mood, affection))
     val scope = rememberCoroutineScope()
 
     val wobble by rememberInfiniteTransition(label = "wobble").animateFloat(
@@ -142,24 +182,28 @@ fun RoamingYard(
             .fillMaxWidth()
             .height(YARD),
     ) {
+        val dp1 = with(density) { 1.dp.toPx() }
         val spritePx = with(density) { SPRITE.toPx() }
         val rangePx = (with(density) { maxWidth.toPx() } - spritePx).coerceAtLeast(0f)
-        val yMinPx = -(with(density) { maxHeight.toPx() } - spritePx).coerceAtLeast(0f)
-        val speedWalk = with(density) { 60.dp.toPx() }
-        val speedHappy = with(density) { 75.dp.toPx() }
-        val speedTired = with(density) { 40.dp.toPx() }
-        val speedRun = with(density) { 130.dp.toPx() }
-        val jumpPx = with(density) { 12.dp.toPx() }
+        val dims = YardDims(
+            rangePx = rangePx,
+            yMinPx = -(with(density) { maxHeight.toPx() } - spritePx).coerceAtLeast(0f),
+            hidePx = spritePx * 0.65f,
+            jumpPx = 12f * dp1,
+            dp1 = dp1,
+        )
         state.spritePx = spritePx
 
         LaunchedEffect(rangePx, spritePx) {
             if (rangePx <= 0f) return@LaunchedEffect
-            state.x.updateBounds(0f, rangePx)
+            // PEEK/GREET가 가장자리 밖으로 나갈 수 있게 확장 bounds(로밍·드래그는 [0,range] 유지)
+            state.x.updateBounds(-dims.hidePx, rangePx + dims.hidePx)
             if (state.x.value !in 0f..rangePx) state.x.snapTo(rangePx / 2f)
-            roamLoop(state, rangePx, yMinPx, moodProvider, speedWalk, speedHappy, speedTired, speedRun, jumpPx)
+            roamLoop(state, dims, ctxProvider)
         }
 
-        val spec = specFor(baseSpec, state.behavior)
+        val ctx = ctxProvider.value
+        val spec = specFor(baseSpec, state.behavior, ctx)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -167,11 +211,10 @@ fun RoamingYard(
                 .offset { IntOffset(state.x.value.roundToInt(), state.y.value.roundToInt()) }
                 .graphicsLayer {
                     scaleX = (if (state.facingLeft) -1f else 1f) * state.turn.value
-                    rotationZ = if (state.dragging) wobble * 8f else 0f
+                    rotationZ = (if (state.dragging) wobble * 8f else 0f) + state.rotation.value
                     val sq = state.squash.value
                     if (sq > 0f) {
                         scaleY = scaleY * (1f - sq * 0.12f)
-                        // scaleX은 방향부호 유지한 채 가로 확장
                         scaleX = scaleX * (1f + sq * 0.10f)
                     }
                     transformOrigin = TransformOrigin(0.5f, 0.9f)
@@ -181,7 +224,7 @@ fun RoamingYard(
                         if (!state.dragging) state.events.trySend(YardEvent.Tap)
                     }
                 }
-                .pointerInput(state, rangePx, yMinPx) {
+                .pointerInput(state, rangePx, dims.yMinPx) {
                     detectDragGestures(
                         onDragStart = {
                             state.dragging = true
@@ -199,7 +242,7 @@ fun RoamingYard(
                             change.consume()
                             scope.launch {
                                 state.x.snapTo((state.x.value + delta.x).coerceIn(0f, rangePx))
-                                state.y.snapTo((state.y.value + delta.y).coerceIn(yMinPx, 0f))
+                                state.y.snapTo((state.y.value + delta.y).coerceIn(dims.yMinPx, 0f))
                             }
                         },
                     )
@@ -208,7 +251,28 @@ fun RoamingYard(
             renderer.Render(spec, Modifier.fillMaxSize())
         }
 
-        // 착지 먼지 오버레이(스프라이트와 형제 → scaleX 반전 영향 없음)
+        // 바닥 간식(도토리 쿠키) — 스프라이트와 형제라 반전 영향 없음
+        state.snackX?.let { sx ->
+            val drop = state.snackDrop.value
+            Canvas(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .size(28.dp)
+                    .offset {
+                        val fall = (1f - drop) * 60f * dims.dp1
+                        IntOffset((sx - 14f * dims.dp1).roundToInt(), (-8f * dims.dp1 - fall).roundToInt())
+                    },
+            ) {
+                val r = size.minDimension / 2f
+                drawCircle(Color(0xFFC98A4B), radius = r * 0.7f, center = Offset(r, r * 1.1f))
+                drawCircle(Color(0xFF8A5A30), radius = r * 0.5f, center = Offset(r, r * 0.55f))
+                listOf(-0.3f, 0.1f, 0.4f).forEach { t ->
+                    drawCircle(Color(0xFF8A5A30), radius = r * 0.08f, center = Offset(r + t * r, r * 1.15f))
+                }
+            }
+        }
+
+        // 착지 먼지 오버레이
         if (state.dust.value > 0f) {
             val d = state.dust.value
             Canvas(
@@ -236,14 +300,8 @@ fun RoamingYard(
 
 private suspend fun roamLoop(
     state: YardState,
-    rangePx: Float,
-    yMinPx: Float,
-    moodProvider: androidx.compose.runtime.State<Mood>,
-    speedWalk: Float,
-    speedHappy: Float,
-    speedTired: Float,
-    speedRun: Float,
-    jumpPx: Float,
+    dims: YardDims,
+    ctxProvider: State<YardContext>,
 ) {
     var pending: YardEvent? = null
     var lastBehavior = YardBehavior.PAUSE
@@ -254,20 +312,28 @@ private suspend fun roamLoop(
         }
         val ev = pending ?: state.events.tryReceive().getOrNull()
         pending = null
+        val ctx = ctxProvider.value
         val behavior = when (ev) {
             is YardEvent.Drop -> YardBehavior.FALL
             is YardEvent.Tap -> YardBehavior.REACT
             is YardEvent.Celebrate -> YardBehavior.CELEBRATE
-            null -> chooseNext(lastBehavior, moodProvider.value)
+            is YardEvent.Greet -> YardBehavior.GREET
+            is YardEvent.Snack -> YardBehavior.EAT
+            null -> weightedPick(idleWeights(ctx.species, lastBehavior, ctx.mood))
         }
         val interrupt = raceEvents(state) {
             setBehavior(state, behavior)
-            execute(state, behavior, ev, rangePx, moodProvider.value, speedWalk, speedHappy, speedTired, speedRun, jumpPx)
+            try {
+                execute(state, behavior, ev, ctx, dims)
+            } finally {
+                if (behavior == YardBehavior.EAT) state.snackX = null
+            }
         }
         // 전환 스쿼시 중 선점되면 눌린 채로 남지 않게 복원
         if (state.turn.value != 1f) state.turn.snapTo(1f)
+        if (state.rotation.value != 0f && behavior != YardBehavior.WALK) state.rotation.snapTo(0f)
         pending = interrupt
-        lastBehavior = if (behavior == YardBehavior.WALK || behavior == YardBehavior.PAUSE) behavior else YardBehavior.PAUSE
+        lastBehavior = behavior
     }
 }
 
@@ -294,24 +360,6 @@ private suspend fun raceEvents(state: YardState, block: suspend () -> Unit): Yar
     result
 }
 
-private fun chooseNext(last: YardBehavior, mood: Mood): YardBehavior {
-    val happy = mood == Mood.HAPPY
-    val tired = mood == Mood.TIRED
-    val weights: List<Pair<YardBehavior, Int>> = when (last) {
-        YardBehavior.WALK -> listOf(
-            YardBehavior.PAUSE to 70, YardBehavior.HOP to 20, YardBehavior.WALK to 10,
-        )
-        YardBehavior.HOP -> listOf(YardBehavior.PAUSE to 80, YardBehavior.WALK to 20)
-        else -> buildList { // PAUSE 등
-            add(YardBehavior.WALK to 55)
-            add(YardBehavior.HOP to if (happy) 25 else 15)
-            add(YardBehavior.PAUSE to 10)
-            if (tired) add(YardBehavior.SLEEP to 30)
-        }
-    }
-    return weightedPick(weights)
-}
-
 private fun weightedPick(weights: List<Pair<YardBehavior, Int>>): YardBehavior {
     val total = weights.sumOf { it.second }
     if (total <= 0) return YardBehavior.PAUSE
@@ -323,21 +371,19 @@ private fun weightedPick(weights: List<Pair<YardBehavior, Int>>): YardBehavior {
     return weights.first().first
 }
 
+// ─────────────────────────── 행동 실행 ───────────────────────────
+
 private suspend fun execute(
     state: YardState,
     behavior: YardBehavior,
     ev: YardEvent?,
-    rangePx: Float,
-    mood: Mood,
-    speedWalk: Float,
-    speedHappy: Float,
-    speedTired: Float,
-    speedRun: Float,
-    jumpPx: Float,
+    ctx: YardContext,
+    dims: YardDims,
 ) {
+    val t = temperamentFor(ctx.species)
     when (behavior) {
         YardBehavior.PAUSE -> {
-            val dur = Random.nextLong(1500, 4000)
+            val dur = Random.nextLong(t.pauseMs.first, t.pauseMs.last)
             if (Random.nextFloat() < 0.4f) {
                 delay(dur / 2)
                 state.facingLeft = !state.facingLeft
@@ -346,30 +392,16 @@ private suspend fun execute(
                 delay(dur)
             }
         }
-        YardBehavior.WALK -> {
-            val speed = when (mood) {
-                Mood.HAPPY -> speedHappy
-                Mood.TIRED -> speedTired
-                Mood.CALM -> speedWalk
-            }
-            walkTo(state, randomTarget(state.x.value, rangePx), speed)
-        }
-        YardBehavior.HOP -> {
-            delay(Random.nextLong(700, 1200))
-        }
+        YardBehavior.WALK -> walkTo(state, randomTarget(state.x.value, dims.rangePx), dims.speed(t.walkStyle, ctx.mood), t.walkStyle, dims)
+        YardBehavior.HOP -> delay(Random.nextLong(700, 1200))
         YardBehavior.SLEEP -> {
-            // 가까운 가장자리로 걸어가 눕기
-            val edge = if (state.x.value < rangePx / 2f) rangePx * 0.12f else rangePx * 0.88f
+            val edge = if (state.x.value < dims.rangePx / 2f) dims.rangePx * 0.12f else dims.rangePx * 0.88f
             setBehavior(state, YardBehavior.WALK)
-            walkTo(state, edge, speedTired)
+            walkTo(state, edge, dims.speed(t.walkStyle, Mood.TIRED), t.walkStyle, dims)
             setBehavior(state, YardBehavior.SLEEP)
             delay(Random.nextLong(8000, 20000))
         }
-        YardBehavior.REACT -> {
-            state.y.animateTo(-jumpPx, tween(220, easing = Motion.Decelerate))
-            state.y.animateTo(0f, tween(300, easing = Motion.Bounce))
-            delay(1300)
-        }
+        YardBehavior.REACT -> executeReact(state, ctx, dims)
         YardBehavior.FALL -> {
             val h = abs(state.y.value)
             val dur = (240 + h * 0.6f).toInt().coerceAtMost(460)
@@ -379,17 +411,227 @@ private suspend fun execute(
         YardBehavior.CELEBRATE -> {
             val evolved = (ev as? YardEvent.Celebrate)?.evolved == true
             val laps = if (evolved) 2 else 1
-            val start = state.x.value
+            val start = state.x.value.coerceIn(0f, dims.rangePx)
+            setBehavior(state, YardBehavior.WALK)
             repeat(laps) {
-                walkTo(state, rangePx, speedRun)
-                walkTo(state, 0f, speedRun)
+                walkTo(state, dims.rangePx, dims.runSpeed, t.walkStyle, dims)
+                walkTo(state, 0f, dims.runSpeed, t.walkStyle, dims)
             }
-            walkTo(state, start.coerceIn(0f, rangePx), speedRun)
+            walkTo(state, start, dims.runSpeed, t.walkStyle, dims)
+            setBehavior(state, YardBehavior.CELEBRATE)
+            delay(900)
         }
-        YardBehavior.DRAG -> {
-            // 드래그는 제스처가 구동 — 여기 도달 시 해제될 때까지 대기
-            snapshotFlow { state.dragging }.first { !it }
+        YardBehavior.GREET -> executeGreet(state, ctx, dims)
+        YardBehavior.PEEK -> executePeek(state, ctx, dims, walkFirst = true)
+        YardBehavior.GROOM -> {
+            val dur = Random.nextLong(4000, 7000)
+            if (Random.nextFloat() < 0.4f) {
+                delay(dur / 2)
+                state.facingLeft = !state.facingLeft
+                delay(dur / 2)
+            } else {
+                delay(dur)
+            }
         }
+        YardBehavior.BINKY -> executeBinky(state, dims)
+        YardBehavior.PECK -> {
+            delay(Random.nextLong(2000, 4000))
+            if (Random.nextFloat() < 0.5f) state.facingLeft = !state.facingLeft
+        }
+        YardBehavior.EAT -> executeEat(state, ev as? YardEvent.Snack, ctx, dims)
+        YardBehavior.DRAG -> snapshotFlow { state.dragging }.first { !it }
+    }
+}
+
+/** 탭 반응 — 호감도 게이트. */
+private suspend fun executeReact(state: YardState, ctx: YardContext, dims: YardDims) {
+    when (reactStyleFor(ctx.species, ctx.level)) {
+        ReactStyle.COOL -> {
+            // 힐끗 보고 무시(도도)
+            state.facingLeft = !state.facingLeft
+            delay(500)
+            state.facingLeft = !state.facingLeft
+            delay(600)
+        }
+        ReactStyle.STARTLE_DASH -> {
+            // 움찔 → 반대편으로 도망(토끼)
+            state.y.animateTo(-dims.jumpPx * 0.6f, tween(120))
+            state.y.animateTo(0f, tween(160, easing = Motion.Bounce))
+            val target = if (state.x.value < dims.rangePx / 2f) dims.rangePx * 0.9f else dims.rangePx * 0.1f
+            setBehavior(state, YardBehavior.WALK)
+            walkTo(state, target, dims.runSpeed, temperamentFor(ctx.species).walkStyle, dims)
+            setBehavior(state, YardBehavior.PAUSE)
+        }
+        ReactStyle.STARTLE_HIDE -> {
+            // 움찔 → 가장자리로 도망가 빼꼼(여우)
+            state.y.animateTo(-dims.jumpPx * 0.6f, tween(120))
+            state.y.animateTo(0f, tween(160, easing = Motion.Bounce))
+            executePeek(state, ctx, dims, walkFirst = true)
+        }
+        ReactStyle.NORMAL -> {
+            state.y.animateTo(-dims.jumpPx, tween(220, easing = Motion.Decelerate))
+            state.y.animateTo(0f, tween(300, easing = Motion.Bounce))
+            delay(1100)
+        }
+        ReactStyle.LOVING -> {
+            repeat(2) {
+                state.y.animateTo(-dims.jumpPx, tween(200, easing = Motion.Decelerate))
+                state.y.animateTo(0f, tween(260, easing = Motion.Bounce))
+            }
+            delay(1500)
+        }
+    }
+}
+
+/** 가장자리에 몸을 숨기고 얼굴만 내밀어 훔쳐보기(여우 습성). */
+private suspend fun executePeek(state: YardState, ctx: YardContext, dims: YardDims, walkFirst: Boolean) {
+    val leftEdge = state.x.value < dims.rangePx / 2f
+    if (walkFirst) {
+        setBehavior(state, YardBehavior.WALK)
+        walkTo(state, if (leftEdge) 0f else dims.rangePx, dims.speed(WalkStyle.TROT, ctx.mood), WalkStyle.TROT, dims)
+    }
+    setBehavior(state, YardBehavior.PEEK)
+    state.facingLeft = !leftEdge // 화면 안쪽을 바라봄
+    val hidden = if (leftEdge) -dims.hidePx else dims.rangePx + dims.hidePx
+    state.x.animateTo(hidden, tween(500))
+    val watch = Random.nextLong(3000, 6000)
+    if (Random.nextFloat() < 0.3f) {
+        delay(watch / 2)
+        // 한 번 쏙 완전히 숨었다가 다시 빼꼼
+        val fullHide = if (leftEdge) -state.spritePx else dims.rangePx + state.spritePx
+        state.x.animateTo(fullHide.coerceIn(-state.spritePx, dims.rangePx + state.spritePx), tween(250))
+        delay(400)
+        state.x.animateTo(hidden, tween(300))
+        delay(watch / 2)
+    } else {
+        delay(watch)
+    }
+    state.x.animateTo(if (leftEdge) 0f else dims.rangePx, tween(400))
+}
+
+/** 신나는 지그재그 점프(토끼 빙키). */
+private suspend fun executeBinky(state: YardState, dims: YardDims) {
+    repeat(3) {
+        val dx = (Random.nextFloat() * 80f - 40f) * dims.dp1
+        val target = (state.x.value + dx).coerceIn(0f, dims.rangePx)
+        coroutineScope {
+            launch { state.x.animateTo(target, tween(320)) }
+            state.y.animateTo(-dims.jumpPx * 1.6f, tween(160, easing = Motion.Decelerate))
+            state.y.animateTo(0f, tween(200, easing = Motion.Bounce))
+        }
+        land(state)
+    }
+}
+
+/** 주인이 앱에 들어왔을 때의 종별 인사. */
+private suspend fun executeGreet(state: YardState, ctx: YardContext, dims: YardDims) {
+    val t = temperamentFor(ctx.species)
+    val center = dims.rangePx / 2f
+    when (t.greetStyle) {
+        GreetStyle.RUSH -> {
+            // 후다닥 달려와 방방(앵김)
+            setBehavior(state, YardBehavior.WALK)
+            walkTo(state, center, dims.runSpeed, t.walkStyle, dims)
+            setBehavior(state, YardBehavior.HOP)
+            val hops = when {
+                ctx.level >= AffectionLevel.BONDED -> 4
+                ctx.level >= AffectionLevel.CLOSE -> 3
+                else -> 2
+            }
+            repeat(hops) {
+                state.y.animateTo(-dims.jumpPx, tween(180, easing = Motion.Decelerate))
+                state.y.animateTo(0f, tween(220, easing = Motion.Bounce))
+            }
+            delay(600)
+        }
+        GreetStyle.ALOOF_OR_RUB -> {
+            if (ctx.level >= AffectionLevel.CLOSE) {
+                // 친해지면: 천천히 다가와 몸 비비기
+                setBehavior(state, YardBehavior.WALK)
+                walkTo(state, center, dims.speed(WalkStyle.STROLL, ctx.mood), WalkStyle.STROLL, dims)
+                setBehavior(state, YardBehavior.REACT)
+                repeat(3) {
+                    state.x.animateTo(state.x.value + 6f * dims.dp1, tween(160))
+                    state.x.animateTo(state.x.value - 6f * dims.dp1, tween(160))
+                }
+                delay(700)
+            } else {
+                // 도도: 힐끗 보고 그루밍
+                state.facingLeft = state.x.value > dims.rangePx / 2f
+                delay(800)
+                setBehavior(state, YardBehavior.GROOM)
+                delay(3000)
+            }
+        }
+        GreetStyle.PEEK_IN -> {
+            // 가장자리 밖에서 빼꼼 등장(수줍음)
+            val leftEdge = state.x.value < dims.rangePx / 2f
+            state.x.snapTo(if (leftEdge) -dims.hidePx else dims.rangePx + dims.hidePx)
+            state.behavior = YardBehavior.PEEK
+            state.facingLeft = !leftEdge
+            delay(300)
+            val peekAt = if (leftEdge) -dims.hidePx * 0.5f else dims.rangePx + dims.hidePx * 0.5f
+            state.x.animateTo(peekAt, tween(600))
+            delay(2500)
+            if (ctx.level == AffectionLevel.STRANGER) {
+                state.x.animateTo(if (leftEdge) -dims.hidePx else dims.rangePx + dims.hidePx, tween(300))
+                delay(500)
+                state.x.animateTo(peekAt, tween(400))
+                delay(1000)
+            }
+            setBehavior(state, YardBehavior.WALK)
+            walkTo(state, dims.rangePx * if (leftEdge) 0.3f else 0.7f, dims.speed(WalkStyle.TROT, ctx.mood), WalkStyle.TROT, dims)
+            setBehavior(state, YardBehavior.PAUSE)
+        }
+        GreetStyle.BINKY_IN -> executeBinky(state, dims)
+        GreetStyle.ROLL_IN, GreetStyle.WADDLE_IN, GreetStyle.SCURRY_IN -> {
+            setBehavior(state, YardBehavior.WALK)
+            walkTo(state, center, dims.speed(t.walkStyle, ctx.mood), t.walkStyle, dims)
+            setBehavior(state, YardBehavior.HOP)
+            state.y.animateTo(-dims.jumpPx, tween(200, easing = Motion.Decelerate))
+            state.y.animateTo(0f, tween(260, easing = Motion.Bounce))
+            land(state)
+            delay(500)
+        }
+        GreetStyle.SLOW_APPROACH -> {
+            // 느긋: 천천히 걸어와 자리 잡기(판다)
+            setBehavior(state, YardBehavior.WALK)
+            walkTo(state, center, dims.speed(WalkStyle.STROLL, Mood.TIRED), WalkStyle.STROLL, dims)
+            setBehavior(state, YardBehavior.PAUSE)
+            delay(1200)
+        }
+    }
+}
+
+/** 간식: 떨어지면 걸어가서 냠냠, 시크한 고양이는 먹고 딴청. */
+private suspend fun executeEat(state: YardState, snack: YardEvent.Snack?, ctx: YardContext, dims: YardDims) {
+    val frac = snack?.xFraction ?: 0.5f
+    val snackCenter = (frac * dims.rangePx + state.spritePx / 2f).coerceIn(state.spritePx * 0.3f, dims.rangePx + state.spritePx * 0.7f)
+    state.snackX = snackCenter
+    state.snackDrop.snapTo(0f)
+    state.snackDrop.animateTo(1f, tween(400, easing = Motion.Bounce))
+
+    // 간식 옆으로 이동(도도한 고양이는 저호감이면 일부러 느긋하게)
+    val t = temperamentFor(ctx.species)
+    val aloof = ctx.species == Species.CAT && ctx.level < AffectionLevel.CLOSE
+    val speed = if (aloof) dims.speed(WalkStyle.STROLL, Mood.TIRED) else dims.speed(t.walkStyle, Mood.HAPPY)
+    if (aloof) delay(700) // 못 이기는 척 뜸 들이기
+    setBehavior(state, YardBehavior.WALK)
+    walkTo(state, (snackCenter - state.spritePx * 0.5f).coerceIn(0f, dims.rangePx), speed, t.walkStyle, dims)
+
+    setBehavior(state, YardBehavior.EAT)
+    delay(1500)
+    state.snackX = null // 먹어서 사라짐
+    delay(300)
+
+    if (aloof) {
+        // 새침: 먹고 딴청
+        setBehavior(state, YardBehavior.PAUSE)
+        state.facingLeft = !state.facingLeft
+        delay(800)
+    } else {
+        setBehavior(state, YardBehavior.HOP)
+        delay(800)
     }
 }
 
@@ -398,12 +640,18 @@ private fun randomTarget(current: Float, rangePx: Float): Float {
     val minStep = maxOf(rangePx * 0.15f, 1f)
     repeat(6) {
         val t = Random.nextFloat() * rangePx
-        if (abs(t - current) >= minStep) return t
+        if (abs(t - current) >= minStep) return t.coerceIn(0f, rangePx)
     }
-    return (current + rangePx / 2f) % rangePx
+    return ((current + rangePx / 2f) % rangePx).coerceIn(0f, rangePx)
 }
 
-private suspend fun walkTo(state: YardState, target: Float, speedPxPerSec: Float) {
+private suspend fun walkTo(
+    state: YardState,
+    target: Float,
+    speedPxPerSec: Float,
+    style: WalkStyle,
+    dims: YardDims,
+) {
     val dist = abs(target - state.x.value)
     if (dist < 1f) return
     val newFacing = target < state.x.value
@@ -413,8 +661,19 @@ private suspend fun walkTo(state: YardState, target: Float, speedPxPerSec: Float
         state.facingLeft = newFacing
         state.turn.animateTo(1f, tween(70, easing = LinearEasing))
     }
-    val dur = (dist / speedPxPerSec * 1000f).toInt().coerceIn(120, 6000)
-    state.x.animateTo(target, tween(dur, easing = LinearEasing))
+    val dur = (dist / speedPxPerSec * 1000f).toInt().coerceIn(120, 8000)
+    if (style == WalkStyle.ROLL) {
+        // 데굴데굴: 이동 거리만큼 회전(몸폭당 360°), 방향 부호 반영
+        val dir = if (newFacing) -1f else 1f
+        val degrees = dist / state.spritePx.coerceAtLeast(1f) * 360f * dir
+        coroutineScope {
+            launch { state.rotation.animateTo(state.rotation.value + degrees, tween(dur, easing = LinearEasing)) }
+            state.x.animateTo(target, tween(dur, easing = LinearEasing))
+        }
+        state.rotation.snapTo(0f)
+    } else {
+        state.x.animateTo(target, tween(dur, easing = LinearEasing))
+    }
 }
 
 private suspend fun land(state: YardState) {
