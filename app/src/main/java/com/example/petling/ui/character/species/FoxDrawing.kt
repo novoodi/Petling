@@ -24,15 +24,15 @@ internal fun DrawScope.drawFox(
     val hr = prop.headR * 1.12f // 여우는 볼이 옆으로 넓은 머리
     val hc = prop.headCy
 
-    // 꼬리(맨 뒤): 몸 오른쪽에서 위로 뻗는 플룸, 흰 끝
-    val rootX = cx + prop.bodyRx * 0.72f
-    val rootY = prop.bodyCy + prop.bodyRy * 0.42f
+    // 꼬리(맨 뒤): 몸 오른쪽에서 옆으로 크게 뻗는 플룸, 흰 끝(실루엣 시그니처)
+    val rootX = cx + prop.bodyRx * 0.78f
+    val rootY = prop.bodyCy + prop.bodyRy * 0.46f
     val wag = sin(motion.tailWag * 2 * PI).toFloat() * pose.tailWagAmp * 6f - pose.tailLift * 5f
     drawPlumeTail(
         p, d, rootX, rootY,
-        len = prop.tailLen * 1.35f + 0.03f, thick = prop.tailThick,
+        len = prop.tailLen * 1.5f + 0.03f, thick = prop.tailThick * 1.1f,
         color = palette.body, tipColor = palette.belly, outline = palette.outline,
-        angleDeg = -30f + wag,
+        angleDeg = -44f + wag,
     )
 
     // 큰 삼각귀(뒤): 다크 팁 + 크림 속귀 + 아웃라인

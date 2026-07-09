@@ -88,7 +88,7 @@ private fun DrawScope.drawRabbitEar(
     lenMul: Float,
 ) {
     val hr = prop.headR * 1.06f
-    val baseX = 0.5f + sideSign * hr * 0.38f
+    val baseX = 0.5f + sideSign * hr * 0.44f // V자 간격 확대(실루엣 시그니처)
     val baseY = prop.headCy - hr * 0.55f
     val len = prop.earLen * 1.1f * lenMul
     val w = prop.earW * 2.1f

@@ -28,12 +28,12 @@ internal fun DrawScope.drawPanda(
     val black = palette.marking
     val breathe = 1f + motion.breathe * 0.012f
 
-    // 둥근 흑 귀(뒤, 쫑긋 반영)
-    val earY = hc - hr * 0.72f
+    // 둥근 흑 귀(뒤, 쫑긋 반영) — 크게(실루엣 시그니처)
+    val earY = hc - hr * 0.76f
     listOf(-1f, 1f).forEach { s ->
         outlinedCircle(
-            p, d, cx + s * hr * 0.62f, earY - (pose.earPerk - 1f) * 0.02f + pose.earDroop * 0.012f,
-            hr * 0.32f * (1f + motion.earTwitch * 0.08f), black, palette.outline, OUT_W_S,
+            p, d, cx + s * hr * 0.66f, earY - (pose.earPerk - 1f) * 0.02f + pose.earDroop * 0.012f,
+            hr * 0.38f * (1f + motion.earTwitch * 0.08f), black, palette.outline, OUT_W_S,
         )
     }
 
