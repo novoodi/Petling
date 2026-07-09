@@ -35,6 +35,8 @@ data class CharacterSpec(
      * 0L=변이 없음(레거시 스냅샷·수기 조립 스펙).
      */
     val seed: Long = 0L,
+    /** 성격. 렌더러가 모션 프로파일(숨쉬기·깜빡임·홉 주기 등)로 반영한다. null=기본 모션. */
+    val personality: Personality? = null,
 ) {
     companion object {
         /** 도메인 캐릭터 상태로부터 기본 표정을 정해 스펙을 만든다. */
@@ -52,6 +54,7 @@ data class CharacterSpec(
             eyeStyle = state.eyeStyle,
             animation = animation,
             seed = state.hatchedAt,
+            personality = state.personality,
         )
 
         fun expressionFor(mood: Mood): Expression = when (mood) {
