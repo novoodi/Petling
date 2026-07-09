@@ -14,7 +14,8 @@ import java.time.temporal.TemporalAdjusters
  */
 object KoreanScheduleParser {
 
-    private data class Match(val value: Int?, val range: IntRange, val text: String? = null)
+    /** weak = 날짜 신호가 약함(요일 단독, 비보강 M/d) — 시간이 동반될 때만 신뢰. */
+    private data class Match(val value: Int?, val range: IntRange, val text: String? = null, val weak: Boolean = false)
 
     private val WEEKDAYS = mapOf(
         "월" to DayOfWeek.MONDAY, "화" to DayOfWeek.TUESDAY, "수" to DayOfWeek.WEDNESDAY,
@@ -93,6 +94,8 @@ object KoreanScheduleParser {
         if (title.isNotBlank()) confidence += 0.20f
         if (location != null) confidence += 0.05f
         confidence = confidence.coerceIn(0f, 1f)
+        // 약한 날짜 신호는 시간이 함께 잡혔을 때만 신뢰 ("일요일은 휴무입니다", "7/15 발표" 등)
+        if (date != null && date.weak && time == null) confidence = confidence.coerceAtMost(0.3f)
 
         val draft = ParsedScheduleDraft(
             title = effectiveTitle,
@@ -128,20 +131,34 @@ object KoreanScheduleParser {
         }
         // 상대 표현
         relativeDate(line, today)?.let { return it }
-        // M/d (연도 없는 슬래시)
+        // M/d (연도 없는 슬래시) — 비율·점수 문맥이면 날짜 아님, 요일 괄호 없으면 약한 신호
         Regex("(?<!\\d)(\\d{1,2})/(\\d{1,2})(?!\\d)").find(line)?.let { m ->
             val (mo, d) = m.destructured
-            if (mo.toInt() in 1..12 && d.toInt() in 1..31) {
+            if (mo.toInt() in 1..12 && d.toInt() in 1..31 && !isRatioContext(line, m.range)) {
                 resolveMonthDay(mo.toInt(), d.toInt(), today)?.let {
-                    return Match(it.toEpochDay().toInt(), m.range)
+                    return Match(it.toEpochDay().toInt(), m.range, weak = !hasWeekdaySuffix(line, m.range))
                 }
             }
         }
         return null
     }
 
+    /** "평점 4/5", "진도 3/12", "4/5점" 등 비율·점수 문맥이면 날짜가 아니다. */
+    private fun isRatioContext(line: String, range: IntRange): Boolean {
+        val before = line.substring((range.first - 8).coerceAtLeast(0), range.first)
+        val after = line.substring(range.last + 1, (range.last + 4).coerceAtMost(line.length)).trimStart()
+        return Regex("(평점|별점|점수|평가|리뷰|진도|승률|정답률|만점)\\s*[:：]?\\s*$").containsMatchIn(before) ||
+            after.startsWith("점") || after.startsWith("만점") || after.startsWith("개")
+    }
+
+    /** "7/15(수)"처럼 요일 괄호가 붙으면 강한 날짜 신호. */
+    private fun hasWeekdaySuffix(line: String, range: IntRange): Boolean {
+        val after = line.substring(range.last + 1, (range.last + 5).coerceAtMost(line.length))
+        return Regex("^\\s*\\(?[월화수목금토일]\\)").containsMatchIn(after)
+    }
+
     private fun relativeDate(line: String, today: LocalDate): Match? {
-        data class R(val regex: Regex, val resolve: (MatchResult) -> LocalDate?)
+        data class R(val regex: Regex, val weak: Boolean = false, val resolve: (MatchResult) -> LocalDate?)
         val rules = listOf(
             R(Regex("내일모레|모레")) { today.plusDays(2) },
             R(Regex("글피")) { today.plusDays(3) },
@@ -153,7 +170,10 @@ object KoreanScheduleParser {
             R(Regex("이번\\s*주\\s*([월화수목금토일])요일")) { m ->
                 WEEKDAYS[m.groupValues[1]]?.let { weekdayInWeek(today, it) }
             },
-            R(Regex("(이번|담|다음)?\\s*주말")) { today.with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY)) },
+            R(Regex("(이번|담|다음)?\\s*주말")) { m ->
+                val base = if (m.groupValues[1] == "다음" || m.groupValues[1] == "담") today.plusWeeks(1) else today
+                base.with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY))
+            },
             R(Regex("(다음|담)\\s*달\\s*(\\d{1,2})일")) { m ->
                 val d = m.groupValues[2].toInt()
                 runCatching { today.plusMonths(1).withDayOfMonth(d) }.getOrNull()
@@ -163,13 +183,13 @@ object KoreanScheduleParser {
                 runCatching { today.withDayOfMonth(d) }.getOrNull()
             },
             R(Regex("(\\d{1,2})일\\s*(후|뒤)")) { m -> today.plusDays(m.groupValues[1].toLong()) },
-            R(Regex("([월화수목금토일])요일")) { m ->
+            R(Regex("([월화수목금토일])요일"), weak = true) { m ->
                 WEEKDAYS[m.groupValues[1]]?.let { nextOrSameWeekday(today, it) }
             },
         )
         for (r in rules) {
             r.regex.find(line)?.let { m ->
-                r.resolve(m)?.let { return Match(it.toEpochDay().toInt(), m.range) }
+                r.resolve(m)?.let { return Match(it.toEpochDay().toInt(), m.range, weak = r.weak) }
             }
         }
         return null
@@ -208,7 +228,7 @@ object KoreanScheduleParser {
             }
         }
 
-        val hourMin = Regex("(오전|오후|아침|저녁|밤|새벽)?\\s*(\\d{1,2})시\\s*(반|\\d{1,2}분)?").find(line)
+        val hourMin = Regex("(오전|오후|아침|저녁|밤|새벽)?\\s*(\\d{1,2})시(?!간)\\s*(반|\\d{1,2}분)?").find(line)
         if (hourMin != null) {
             val period = hourMin.groupValues[1]
             var h = hourMin.groupValues[2].toInt()

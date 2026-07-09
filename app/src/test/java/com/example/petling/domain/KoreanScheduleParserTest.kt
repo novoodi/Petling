@@ -159,4 +159,76 @@ class KoreanScheduleParserTest {
         assertTrue(!title.contains("3시"))
         assertTrue(title.contains("수학") || title.contains("과외"))
     }
+
+    // ── 오탐 수정 (a): "N시간"은 시각이 아니다 ──
+
+    @Test
+    fun duration_hours_is_not_a_time() {
+        val s = parseOne("수학 3시간 공부")!!
+        assertNull(s.startMinuteOfDay)
+        assertNull(s.date)
+    }
+
+    @Test
+    fun duration_with_date_keeps_date_only() {
+        val s = parseOne("내일 3시간 공부")!!
+        assertEquals(today.plusDays(1), s.date)
+        assertNull(s.startMinuteOfDay)
+    }
+
+    @Test
+    fun bare_hour_before_noun_still_parsed() {
+        assertEquals(15 * 60, parseOne("3시 학원")!!.startMinuteOfDay)
+    }
+
+    // ── 오탐 수정 (b): 분수·비율 M/d ──
+
+    @Test
+    fun rating_slash_is_not_a_date() {
+        val s = parseOne("평점 4/5 인생 맛집")!!
+        assertNull(s.date)
+    }
+
+    @Test
+    fun slash_date_with_time_is_confident() {
+        val s = parseOne("7/15 3시 병원")!!
+        assertEquals(LocalDate.of(2026, 7, 15), s.date)
+        assertEquals(15 * 60, s.startMinuteOfDay)
+        assertTrue(s.confidence > 0.5f)
+    }
+
+    @Test
+    fun slash_date_with_weekday_paren_is_strong() {
+        val s = parseOne("7/15(수) 발표")!!
+        assertEquals(LocalDate.of(2026, 7, 15), s.date)
+        assertTrue(s.confidence > 0.3f)
+    }
+
+    @Test
+    fun bare_slash_date_is_low_confidence() {
+        val s = parseOne("7/15 발표")!!
+        assertEquals(LocalDate.of(2026, 7, 15), s.date)
+        assertTrue(s.confidence <= 0.3f)
+    }
+
+    // ── 오탐 수정 (c): "다음 주말"은 다음 주 토요일 ──
+
+    @Test
+    fun next_weekend_is_next_week_saturday() {
+        assertEquals(LocalDate.of(2026, 7, 18), parseOne("다음 주말 캠핑")!!.date)
+    }
+
+    @Test
+    fun this_weekend_exact_date() {
+        assertEquals(LocalDate.of(2026, 7, 11), parseOne("이번 주말 영화")!!.date)
+    }
+
+    // ── 오탐 수정 (d): 요일 단독 + 시간 없음은 저신뢰 ──
+
+    @Test
+    fun bare_weekday_without_time_low_confidence() {
+        val s = parseOne("일요일은 휴무입니다")!!
+        assertEquals(LocalDate.of(2026, 7, 12), s.date)
+        assertTrue(s.confidence <= 0.3f)
+    }
 }
