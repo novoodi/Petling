@@ -1,11 +1,9 @@
 package com.example.petling.ui.character
 
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
-import com.example.petling.domain.model.Species
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -89,66 +87,4 @@ internal fun DrawScope.drawPenguin(
     beak.moveTo(l.x, l.y); beak.lineTo(t.x, t.y); beak.lineTo(r.x, r.y); beak.lineTo(b.x, b.y); beak.close()
     drawPath(beak, P_BEAK)
     drawPath(beak, palette.outline, style = outlineStroke(d, OUT_W_S))
-}
-
-/** 펭귄 옆모습(뒤뚱 보행): 직립 몸 + 흰 배 + 플리퍼 + 두 발 교차, 몸 롤은 렌더러 tilt. */
-internal fun DrawScope.drawPenguinSide(
-    p: (Float, Float) -> Offset,
-    d: (Float) -> Float,
-    palette: ModoriPalette,
-    sp: SideProportions,
-    pose: FacePose,
-    motion: CreatureMotion,
-    eyeStyle: Int,
-    blink: Float,
-    lod: Lod,
-) {
-    val phi = motion.walkCycle
-    val gait = gaitFor(Species.PENGUIN)
-
-    drawBipedCore(p, d, palette, sp, phi, gait, P_FEET, lod)
-
-    // 흰 배(앞쪽 반)
-    drawOval(
-        palette.belly,
-        topLeft = p(sp.bodyCx - sp.bodyHalfLen * 0.15f, sp.bodyCy - sp.bodyHalfHt * 0.55f),
-        size = Size(d(sp.bodyHalfLen * 1.05f), d(sp.bodyHalfHt * 1.5f)),
-    )
-
-    // 머리(몸 상단과 한 덩어리 + 아웃라인)
-    outlinedOval(p, d, sp.headCx, sp.headCy, sp.headR, sp.headR, vGrad(p, sp.headCx, sp.headCy, sp.headR, palette.bodyHighlight, palette.body), palette.outline)
-    // 얼굴 흰 패치
-    drawOval(
-        palette.belly.copy(alpha = 0.9f),
-        topLeft = p(sp.headCx + sp.headR * 0.05f, sp.headCy - sp.headR * 0.3f),
-        size = Size(d(sp.headR * 0.65f), d(sp.headR * 0.7f)),
-    )
-    // 노란 눈썹 깃털
-    drawLine(
-        BROW_GOLD,
-        p(sp.headCx + sp.headR * 0.25f, sp.headCy - sp.headR * 0.45f),
-        p(sp.headCx - sp.headR * 0.25f, sp.headCy - sp.headR * 0.85f),
-        strokeWidth = d(0.012f),
-    )
-
-    // 플리퍼(근측, 걸음 반동으로 살짝 흔들)
-    val flap = sin(phi * 2 * PI).toFloat() * 10f
-    rotate(12f + flap, pivot = p(sp.bodyCx + sp.bodyHalfLen * 0.1f, sp.bodyCy - sp.bodyHalfHt * 0.35f)) {
-        drawOval(
-            palette.bodyShadow,
-            topLeft = p(sp.bodyCx + sp.bodyHalfLen * 0.1f - 0.03f, sp.bodyCy - sp.bodyHalfHt * 0.4f),
-            size = Size(d(0.06f), d(sp.bodyHalfHt * 1.1f)),
-        )
-    }
-
-    // 부리(앞으로 뾰족)
-    val by = sp.headCy + sp.headR * 0.05f
-    triangle(
-        p(sp.headCx + sp.headR * 0.55f, by - sp.headR * 0.12f),
-        p(sp.headCx + sp.headR * 0.55f, by + sp.headR * 0.10f),
-        p(sp.headCx + sp.headR * 1.1f, by),
-        P_BEAK, palette.outline, d,
-    )
-
-    drawSideFace(p, d, palette, sp.headCx, sp.headCy, sp.headR, pose, irisFor(Species.PENGUIN, palette), eyeStyle, blink, lod)
 }

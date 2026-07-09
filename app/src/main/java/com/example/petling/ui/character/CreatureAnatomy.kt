@@ -16,12 +16,6 @@ import com.example.petling.domain.model.Species
 /** 상세도. 작은 크기(72dp 등)에선 세부(수염·홍채·발가락·마킹)를 생략해 뭉개짐을 막는다. */
 enum class Lod { SIMPLE, FULL }
 
-/**
- * 렌더 뷰. FRONT=정면(정지·응시), SIDE=옆모습(보행 — 다리가 실제로 걸음질).
- * 옆모습 아트는 오른쪽 진행 기준으로 그리고, 좌향은 호출부 graphicsLayer scaleX 반전으로 처리한다.
- */
-enum class CreatureView { FRONT, SIDE }
-
 fun lodFor(minDimensionPx: Float): Lod = if (minDimensionPx >= 360f) Lod.FULL else Lod.SIMPLE
 
 /** 정규화 좌표(0~1) 기준 비율 묶음. 각 종 드로잉이 필요한 값만 소비한다. */
@@ -177,123 +171,8 @@ data class CreatureMotion(
     val effectPhase: Float = 0f, // 0..1 하트/zzz 상승·페이드 위상
     val dust: Float = 0f,        // 0..1 착지 먼지 알파
     val breathe: Float = 0f,     // -1..1 숨쉬기(몸 팽창)
-    val walkCycle: Float = 0f,   // 0..1 보행 위상(SIDE 뷰 다리 스윙)
 ) {
     companion object {
         val STATIC = CreatureMotion()
     }
-}
-
-// ─────────────────────────── 옆모습(보행) 테이블 ───────────────────────────
-
-/**
- * 옆모습 골격 비율(정규화 0~1, 오른쪽 진행 기준, 지면 y=0.84).
- * 정면 [Proportions]와 분리해 정면 회귀 리스크를 없앤다.
- */
-data class SideProportions(
-    val bodyCx: Float,      // 몸통(수평 캡슐) 중심 x
-    val bodyCy: Float,
-    val bodyHalfLen: Float, // 몸 반길이
-    val bodyHalfHt: Float,  // 몸 반높이
-    val headCx: Float,      // 머리 중심(앞쪽 +x)
-    val headCy: Float,
-    val headR: Float,
-    val shoulderX: Float,   // 앞다리 피벗 x
-    val hipX: Float,        // 뒷다리 피벗 x
-    val pivotY: Float,      // 다리 피벗 y
-    val legLen: Float,      // 피벗→지면
-    val legThick: Float,
-    val upright: Boolean = false, // 2족 직립(병아리·펭귄)
-)
-
-private val SIDE_BODY_LEN = floatArrayOf(0.15f, 0.18f, 0.21f, 0.23f) // 반길이
-private val SIDE_LEG_LEN = floatArrayOf(0.09f, 0.12f, 0.14f, 0.16f)
-
-/** 종×단계 옆모습 비율. 4족 기본 프레임에서 종별 보정. */
-fun sideProportionsFor(species: Species, stage: GrowthStage): SideProportions {
-    val i = when (stage) {
-        GrowthStage.JUVENILE -> 0
-        GrowthStage.GROWTH1 -> 1
-        GrowthStage.GROWTH2 -> 2
-        GrowthStage.MATURE -> 3
-        GrowthStage.EGG -> 0
-    }
-    val halfLen = SIDE_BODY_LEN[i]
-    val legLen = SIDE_LEG_LEN[i]
-    val headR = HEAD_R[i] * 0.88f
-    val ground = 0.84f
-    val bodyCy = ground - legLen - SIDE_BODY_HT[i] * 0.55f
-    return when (species) {
-        Species.CHICK -> biped(halfLen * 0.72f, legLen * 0.7f, headR, ground, bodyScaleY = 1.15f)
-        Species.PENGUIN -> biped(halfLen * 0.68f, legLen * 0.55f, headR * 0.9f, ground, bodyScaleY = 1.6f)
-        Species.HAMSTER -> SideProportions(
-            bodyCx = 0.47f, bodyCy = ground - legLen * 0.55f - SIDE_BODY_HT[i] * 0.95f,
-            bodyHalfLen = halfLen * 0.85f, bodyHalfHt = SIDE_BODY_HT[i] * 1.15f,
-            headCx = 0.47f + halfLen * 0.85f, headCy = ground - legLen * 0.55f - SIDE_BODY_HT[i] * 1.15f,
-            headR = headR * 1.05f,
-            shoulderX = 0.47f + halfLen * 0.5f, hipX = 0.47f - halfLen * 0.5f,
-            pivotY = ground - legLen * 0.55f, legLen = legLen * 0.5f, legThick = 0.035f,
-        )
-        Species.PANDA -> SideProportions(
-            bodyCx = 0.46f, bodyCy = bodyCy - 0.01f,
-            bodyHalfLen = halfLen * 1.08f, bodyHalfHt = SIDE_BODY_HT[i] * 1.2f,
-            headCx = 0.46f + halfLen * 1.02f, headCy = bodyCy - headR * 0.8f,
-            headR = headR * 1.05f,
-            shoulderX = 0.46f + halfLen * 0.60f, hipX = 0.46f - halfLen * 0.58f,
-            pivotY = ground - legLen, legLen = legLen * 0.9f, legThick = 0.062f,
-        )
-        Species.RABBIT -> SideProportions(
-            bodyCx = 0.44f, bodyCy = bodyCy + 0.01f,
-            bodyHalfLen = halfLen * 0.92f, bodyHalfHt = SIDE_BODY_HT[i] * 1.05f,
-            headCx = 0.44f + halfLen * 0.85f, headCy = bodyCy - headR * 0.72f,
-            headR = headR,
-            shoulderX = 0.44f + halfLen * 0.62f, hipX = 0.44f - halfLen * 0.58f,
-            pivotY = ground - legLen, legLen = legLen * 0.9f, legThick = 0.042f,
-        )
-        else -> SideProportions(
-            bodyCx = 0.46f, bodyCy = bodyCy,
-            bodyHalfLen = halfLen, bodyHalfHt = SIDE_BODY_HT[i],
-            headCx = 0.46f + halfLen * 1.02f, headCy = bodyCy - headR * 0.85f,
-            headR = headR,
-            shoulderX = 0.46f + halfLen * 0.60f, hipX = 0.46f - halfLen * 0.58f,
-            pivotY = ground - legLen, legLen = legLen, legThick = 0.045f,
-        )
-    }
-}
-
-private val SIDE_BODY_HT = floatArrayOf(0.10f, 0.115f, 0.13f, 0.14f)
-
-private fun biped(halfLen: Float, legLen: Float, headR: Float, ground: Float, bodyScaleY: Float): SideProportions {
-    val bodyHt = halfLen * bodyScaleY
-    val bodyCy = ground - legLen - bodyHt * 0.8f
-    return SideProportions(
-        bodyCx = 0.5f, bodyCy = bodyCy,
-        bodyHalfLen = halfLen, bodyHalfHt = bodyHt,
-        headCx = 0.5f + halfLen * 0.35f, headCy = bodyCy - bodyHt * 0.9f,
-        headR = headR,
-        shoulderX = 0.5f + halfLen * 0.25f, hipX = 0.5f - halfLen * 0.25f,
-        pivotY = ground - legLen, legLen = legLen, legThick = 0.035f,
-        upright = true,
-    )
-}
-
-/** 걸음새: 종별 보행 개성(주기 배율·스윙 각도·머리 밥·몸 롤·홉 여부). */
-data class GaitSpec(
-    val freqMul: Float,   // walkCycle 주기 배율(햄스터 종종=크게)
-    val swingDeg: Float,  // 다리 스윙 진폭(도)
-    val bobAmp: Float,    // 머리·몸 상하 밥(정규화)
-    val rollDeg: Float,   // 몸 좌우 롤(2족 뒤뚱)
-    val hop: Boolean = false, // 토끼: 도약 아치 보행
-)
-
-fun gaitFor(species: Species): GaitSpec = when (species) {
-    Species.FOX -> GaitSpec(1.0f, 26f, 0.010f, 0f)
-    Species.CAT -> GaitSpec(0.92f, 22f, 0.006f, 0f)
-    Species.RABBIT -> GaitSpec(0.85f, 30f, 0f, 0f, hop = true)
-    Species.CHICK -> GaitSpec(1.0f, 18f, 0.008f, 4f)
-    Species.DOG -> GaitSpec(1.1f, 28f, 0.012f, 0f)
-    Species.HAMSTER -> GaitSpec(1.6f, 16f, 0.006f, 0f)   // 종종걸음
-    Species.PANDA -> GaitSpec(0.6f, 18f, 0.014f, 3f)     // 느릿느릿 큰 몸 흔들
-    Species.PENGUIN -> GaitSpec(1.05f, 12f, 0.010f, 7f)  // 뒤뚱뒤뚱
-    Species.ACORN -> GaitSpec(1.0f, 0f, 0.012f, 0f)      // 옆모습 미사용(FRONT 폴백)
 }

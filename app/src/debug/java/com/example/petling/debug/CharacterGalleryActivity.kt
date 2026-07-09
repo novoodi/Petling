@@ -17,7 +17,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,9 +31,10 @@ import com.example.petling.domain.model.GrowthStage
 import com.example.petling.domain.model.Mood
 import com.example.petling.domain.model.Species
 import com.example.petling.ui.character.CreatureMotion
-import com.example.petling.ui.character.CreatureView
 import com.example.petling.ui.character.ModoriPalette
 import com.example.petling.ui.character.drawCreature
+import com.example.petling.ui.character.hopPose
+import com.example.petling.ui.character.hopStyleFor
 
 /**
  * 디버그 전용 캐릭터 갤러리(릴리스 미포함).
@@ -107,27 +112,34 @@ private fun Gallery() {
             }
         }
 
-        Header("옆모습 보행 (성숙기, walkCycle 0.25)")
+        Header("정면 홉 보행 (성숙기, phi 0.25)")
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Species.entries.filter { it != Species.ACORN }.forEach { sp ->
-                CellLabeled(sp.displayName, sp, GrowthStage.MATURE, null, Mood.CALM, Expression.NEUTRAL, sp.defaultHue, 0, 108, side = true, walk = 0.25f)
+            Species.entries.forEach { sp ->
+                HopCellLabeled(sp.displayName, sp, GrowthStage.MATURE, sp.defaultHue, phi = 0.25f)
             }
         }
 
-        Header("걷기 사이클 (강아지: 0 / 0.25 / 0.5 / 0.75)")
+        Header("홉 사이클 (강아지: 0 / 0.25 / 0.5 / 0.75)")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(0f, 0.25f, 0.5f, 0.75f).forEach { phi ->
-                CellLabeled("$phi", Species.DOG, GrowthStage.MATURE, null, Mood.CALM, Expression.NEUTRAL, Species.DOG.defaultHue, 0, 108, side = true, walk = phi)
+                HopCellLabeled("$phi", Species.DOG, GrowthStage.MATURE, Species.DOG.defaultHue, phi)
             }
         }
 
-        Header("걷기 사이클 (토끼 홉: 0 / 0.2 / 0.4 / 0.7)")
+        Header("홉 사이클 (토끼: 0 / 0.25 / 0.5 / 0.75)")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(0f, 0.2f, 0.4f, 0.7f).forEach { phi ->
-                CellLabeled("$phi", Species.RABBIT, GrowthStage.MATURE, null, Mood.CALM, Expression.NEUTRAL, Species.RABBIT.defaultHue, 0, 108, side = true, walk = phi)
+            listOf(0f, 0.25f, 0.5f, 0.75f).forEach { phi ->
+                HopCellLabeled("$phi", Species.RABBIT, GrowthStage.MATURE, Species.RABBIT.defaultHue, phi)
+            }
+        }
+
+        Header("홉 사이클 (펭귄 뒤뚱: 0 / 0.25 / 0.5 / 0.75)")
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(0f, 0.25f, 0.5f, 0.75f).forEach { phi ->
+                HopCellLabeled("$phi", Species.PENGUIN, GrowthStage.MATURE, Species.PENGUIN.defaultHue, phi)
             }
         }
     }
@@ -142,25 +154,43 @@ private fun moodFor(ex: Expression): Mood = when (ex) {
 @Composable
 private fun Cell(
     sp: Species, st: GrowthStage, br: Branch?, mood: Mood, ex: Expression, hue: Float, eye: Int, dp: Int,
-    side: Boolean = false, walk: Float = 0f,
 ) {
     val palette = ModoriPalette.from(hue, sp)
     Canvas(modifier = Modifier.size(dp.dp).background(Color(0xFFFBF9F4))) {
-        drawCreature(
-            sp, st, br, mood, ex, palette, eye, blink = 0f,
-            motion = CreatureMotion(walkCycle = walk),
-            view = if (side) CreatureView.SIDE else CreatureView.FRONT,
-        )
+        drawCreature(sp, st, br, mood, ex, palette, eye, blink = 0f)
     }
 }
 
 @Composable
 private fun CellLabeled(
     label: String, sp: Species, st: GrowthStage, br: Branch?, mood: Mood, ex: Expression, hue: Float, eye: Int, dp: Int,
-    side: Boolean = false, walk: Float = 0f,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Cell(sp, st, br, mood, ex, hue, eye, dp, side, walk)
+        Cell(sp, st, br, mood, ex, hue, eye, dp)
+        Text(label, fontSize = 10.sp)
+    }
+}
+
+/** 정면 홉 포즈를 렌더러와 동일하게 적용한 정적 셀(phi 고정). */
+@Composable
+private fun HopCellLabeled(label: String, sp: Species, st: GrowthStage, hue: Float, phi: Float, dp: Int = 108) {
+    val palette = ModoriPalette.from(hue, sp)
+    val pose = hopPose(hopStyleFor(sp), phi)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Canvas(modifier = Modifier.size(dp.dp).background(Color(0xFFFBF9F4))) {
+            val base = size.minDimension
+            val pivot = Offset(size.width / 2f, size.height * 0.88f)
+            translate(top = pose.dyNorm * base) {
+                rotate(degrees = pose.tiltDeg, pivot = Offset(size.width / 2f, size.height / 2f)) {
+                    scale(scaleX = pose.scaleX, scaleY = pose.scaleY, pivot = pivot) {
+                        drawCreature(
+                            sp, st, null, Mood.CALM, Expression.NEUTRAL, palette, 0, blink = 0f,
+                            motion = CreatureMotion(dust = pose.dust),
+                        )
+                    }
+                }
+            }
+        }
         Text(label, fontSize = 10.sp)
     }
 }
