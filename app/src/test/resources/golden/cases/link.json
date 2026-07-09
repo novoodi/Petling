@@ -1,0 +1,28 @@
+[
+  {
+    "id": "link_001",
+    "intent": "link",
+    "text": "공부 자극 영상 모음\nyoutube.com/watch?v=abc123\n조회수 12만회 · 3일 전",
+    "today": "2026-07-07",
+    "expected": [],
+    "note": "\"3일 전\"은 과거 표현 — 날짜 아님"
+  },
+  {
+    "id": "link_002",
+    "intent": "link",
+    "text": "2026년 3/4분기 실적 발표 요약\nbit.ly/3xYzAb",
+    "today": "2026-07-07",
+    "expected": [],
+    "note": "분기 표기 3/4가 날짜로 오인되는 함정 — weak 캡으로 흡수"
+  },
+  {
+    "id": "link_003",
+    "intent": "link",
+    "text": "팔로우 이벤트\n7/20 저녁 8시 라이브 방송\n인스타그램 @petling",
+    "today": "2026-07-07",
+    "expected": [
+      { "title": "라이브", "date": "2026-07-20", "time": "20:00" }
+    ],
+    "note": "SNS 캡처 속 진짜 이벤트 일정"
+  }
+]
