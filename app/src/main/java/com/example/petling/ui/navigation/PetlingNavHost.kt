@@ -62,6 +62,8 @@ fun PetlingNavHost(
         .collectAsStateWithLifecycle(initialValue = null)
     val petGreeting by container.petSpeech.collectAsStateWithLifecycle()
     val yardState = rememberYardState()
+    // perch 레지스트리: NavHost 레벨 remember → 4탭 공유·지속. 화면·오버레이 공통 스코프로 제공.
+    val perchRegistry = androidx.compose.runtime.remember { com.example.petling.ui.overlay.PerchRegistry() }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         container.petCelebrate.collect { evolved -> yardState.celebrate(evolved) }
     }
@@ -119,6 +121,9 @@ fun PetlingNavHost(
             it.hasRoute(SettingsRoute::class)
     } ?: false
 
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.example.petling.ui.overlay.LocalPerchRegistry provides perchRegistry,
+    ) {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
@@ -241,10 +246,12 @@ fun PetlingNavHost(
                 showBubble = currentDest?.hasRoute(HomeRoute::class) ?: false,
                 greeting = petGreeting,
                 bottomInset = padding.calculateBottomPadding(),
+                perchRegistry = perchRegistry,
                 onOpenCharacter = { navController.navigate(CharacterRoute) },
             )
         }
       }
+    }
     }
 }
 

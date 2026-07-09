@@ -45,6 +45,7 @@ fun AppPet(
     showBubble: Boolean,
     greeting: String,
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
+    perchRegistry: com.example.petling.ui.overlay.PerchRegistry? = null,
     onOpenCharacter: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -77,7 +78,7 @@ fun AppPet(
         }
 
         // 마당(전체 오버레이 배회, 지면선은 콘텐츠 하단=네비바 위)
-        RoamingYard(baseSpec, affection, state, bottomInset, Modifier.fillMaxSize())
+        RoamingYard(baseSpec, affection, state, bottomInset, perchRegistry, Modifier.fillMaxSize())
     }
 }
 

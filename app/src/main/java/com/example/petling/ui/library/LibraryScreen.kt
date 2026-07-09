@@ -39,6 +39,7 @@ import com.example.petling.domain.model.Category
 import com.example.petling.domain.model.CaptureType
 import com.example.petling.ui.appContainer
 import com.example.petling.ui.components.PetlingCard
+import com.example.petling.ui.overlay.perch
 import com.example.petling.ui.theme.Brand50
 import com.example.petling.ui.theme.Dimens
 import com.example.petling.ui.theme.SurfaceSubtle
@@ -135,7 +136,8 @@ private fun CaptureListCard(item: CaptureItem, category: Category?, onClick: () 
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Dimens.RadiusLg))
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .perch("lib-${item.id}"), // 캐릭터가 올라앉을 수 있는 자리
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             CaptureThumbnail(

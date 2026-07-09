@@ -9,7 +9,12 @@ import com.example.petling.domain.model.Species
  * 마당 캐릭터의 행동 상태. 렌더 스펙(애니메이션/표정/기분) 오버라이드를 결정한다.
  * (순수 Kotlin — Compose 의존 없음, 단위 테스트 가능)
  */
-enum class YardBehavior { PAUSE, WALK, HOP, SLEEP, REACT, DRAG, FALL, CELEBRATE, GREET, PEEK, GROOM, BINKY, PECK, EAT }
+enum class YardBehavior {
+    PAUSE, WALK, HOP, SLEEP, REACT, DRAG, FALL, CELEBRATE, GREET, PEEK, GROOM, BINKY, PECK, EAT,
+    WALK_TO_PERCH, // perch로 이동(정면 홉)
+    SIT,           // perch 위 착지·체류
+    DISMOUNT,      // perch에서 바닥으로 뛰어내림
+}
 
 /** 이동 스타일(옆모습 보행의 속도·연출 차이). */
 enum class WalkStyle { STROLL, TROT, SCURRY, HOP, ROLL }
