@@ -209,7 +209,13 @@ private fun DayCell(
             .clip(CircleShape)
             .then(if (isSelected) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier)
             .then(if (isToday && !isSelected) Modifier.border(1.dp, Brand500, CircleShape) else Modifier)
-            .then(if (isToday) Modifier.perch("cal-today") else Modifier) // 오늘 셀에만 착지 자리
+            // 오늘 셀에만 착지 자리. weight=마감 임박도(중요 일정 있으면↑) — 걱정형이 선호.
+            .then(
+                if (isToday) {
+                    val urgency = if (schedules.any { it.isImportant }) 1f else if (schedules.isNotEmpty()) 0.4f else 0f
+                    Modifier.perch("cal-today", weight = urgency)
+                } else Modifier,
+            )
             .clickable(onClick = onClick),
         verticalArrangement = Arrangement.Center,
     ) {
