@@ -10,6 +10,9 @@ import com.example.petling.domain.model.GrowthStage
 import com.example.petling.domain.model.Mood
 import com.example.petling.domain.model.Species
 
+/** 캐릭터가 서는 바닥선(정규화 y). 종별 체급 스케일과 바닥 그림자의 앵커. */
+const val GROUND_Y = 0.87f
+
 /**
  * 스타팅 동물 벡터 드로잉의 진입점(디스패처).
  *
@@ -35,14 +38,19 @@ fun DrawScope.drawCreature(
 ) {
     val s = size.minDimension
     val origin = Offset((size.width - s) / 2f, (size.height - s) / 2f)
-    fun p(x: Float, y: Float) = Offset(origin.x + x * s, origin.y + y * s)
-    fun d(v: Float) = v * s
+    // 종별 체급: 캔버스 중앙이 아니라 바닥선(GROUND_Y) 기준으로 스케일해 같은 지면에 서게 한다.
+    val k = bulkFor(species, stage)
+    fun p(x: Float, y: Float) = Offset(
+        origin.x + (0.5f + (x - 0.5f) * k) * s,
+        origin.y + (GROUND_Y - (GROUND_Y - y) * k) * s,
+    )
+    fun d(v: Float) = v * k * s
     val lod = lodFor(s)
 
-    // 바닥 그림자
+    // 바닥 그림자(체급 비례 — p()/d()가 바닥선 기준으로 자동 정합)
     drawOval(
         color = Color(0x22000000),
-        topLeft = p(0.30f, 0.87f),
+        topLeft = p(0.30f, GROUND_Y),
         size = Size(d(0.40f), d(0.07f)),
     )
 

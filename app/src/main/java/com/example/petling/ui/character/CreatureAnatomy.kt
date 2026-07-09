@@ -98,6 +98,36 @@ fun proportionsFor(species: Species, stage: GrowthStage): Proportions {
     )
 }
 
+// ─────────────────────────── 종별 체급(바닥선 기준 크기) ───────────────────────────
+
+/**
+ * 성숙기 기준 종 스케일. 최소(병아리 0.60)~최대(판다 1.25) 약 2배 차이로
+ * "뽑기" 실루엣 격차를 만든다. [bulkFor]가 성장단계로 보간해 적용한다.
+ */
+private fun matureBulk(species: Species): Float = when (species) {
+    Species.CHICK -> 0.60f
+    Species.HAMSTER -> 0.65f
+    Species.RABBIT -> 0.85f
+    Species.CAT -> 0.90f
+    Species.PENGUIN -> 0.90f
+    Species.DOG -> 0.95f
+    Species.FOX -> 1.00f
+    Species.PANDA -> 1.25f
+    Species.ACORN -> 1.00f
+}
+
+/** 성장단계별 체급 수렴 램프. 유생기는 격차를 좁혀 소형 종이 과하게 작아지는 걸 막는다. */
+private val BULK_RAMP = floatArrayOf(0.55f, 0.78f, 0.93f, 1f)
+
+/**
+ * 종×단계 체급 계수(1=기준). 캔버스 중앙이 아니라 바닥선(y≈0.87) 기준으로 적용해
+ * 작은 종은 작게·큰 종은 크게 같은 지면에 서게 한다. 알(EGG)은 종 미공개라 항상 1.
+ */
+fun bulkFor(species: Species, stage: GrowthStage): Float {
+    if (stage == GrowthStage.EGG) return 1f
+    return 1f + (matureBulk(species) - 1f) * BULK_RAMP[stageIndex(stage)]
+}
+
 private data class EarSpec(val len: Float, val w: Float, val fold: Float)
 
 private fun earSpec(species: Species, i: Int): EarSpec = when (species) {

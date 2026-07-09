@@ -68,6 +68,23 @@ private fun Gallery() {
             }
         }
 
+        Header("체급 비교 (성숙기, 동일 셀 — 발끝 정렬·판다 클리핑 검수)")
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Species.entries.forEach { sp ->
+                CellLabeled(sp.displayName, sp, GrowthStage.MATURE, null, Mood.CALM, Expression.NEUTRAL, sp.defaultHue, 0, 120)
+            }
+        }
+
+        Header("소형 종 아웃라인 가시성 (유생기·72dp)")
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(Species.CHICK, Species.HAMSTER, Species.RABBIT, Species.CAT).forEach { sp ->
+                CellLabeled(sp.displayName, sp, GrowthStage.JUVENILE, null, Mood.CALM, Expression.NEUTRAL, sp.defaultHue, 0, 72)
+            }
+        }
+
         Header("표정 6종 (고양이·성장기2)")
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
