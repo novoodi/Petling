@@ -20,3 +20,6 @@ local.properties
 keystore.properties
 # Firebase(Crashlytics 도입 시)
 google-services.json
+
+# 타 프로젝트 디자인 시스템 임포트(커밋 금지)
+.design-import/
