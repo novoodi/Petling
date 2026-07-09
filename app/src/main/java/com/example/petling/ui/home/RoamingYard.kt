@@ -13,8 +13,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -60,7 +58,6 @@ import kotlin.math.roundToInt
 import kotlin.random.Random
 
 private val SPRITE = 140.dp
-private val YARD = 200.dp
 
 /** 외부(탭/드래그/일정완료/앱재개/간식)에서 로밍 루프로 보내는 선점 이벤트. */
 sealed interface YardEvent {
@@ -78,8 +75,10 @@ sealed interface YardEvent {
  */
 @Stable
 class YardState {
-    val x = Animatable(0f)        // 스프라이트 좌측 edge px(마당 로컬)
-    val y = Animatable(0f)        // 0=착지, 음수=들림
+    val x = Animatable(0f)        // 스프라이트 좌측 edge px(오버레이 root)
+    val y = Animatable(0f)        // 0=발판 위(착지), 음수=점프로 들림
+    // 발판의 스프라이트-top y(root px). 배회=지면선, 착지=perch 상단. 수직 위치 = baseY + y.
+    val baseY = Animatable(0f)
     val dust = Animatable(0f)     // 착지 먼지 0..1
     val squash = Animatable(0f)   // 착지 스쿼시 0..1
     val turn = Animatable(1f)     // 몸돌리기 가로 스쿼시(정면↔옆모습·방향 반전)
@@ -108,13 +107,14 @@ data class YardContext(val species: Species, val mood: Mood, val affection: Int)
     val level: AffectionLevel get() = affectionLevel(affection)
 }
 
-/** 마당 치수·속도(px). */
+/** 마당 치수·속도(px, 오버레이 root 기준). */
 private class YardDims(
     val rangePx: Float,
     val yMinPx: Float,
     val hidePx: Float,
     val jumpPx: Float,
     val dp1: Float, // 1dp의 px
+    val groundTopY: Float, // 지면선의 스프라이트-top y(오버레이 하단 기준)
 ) {
     fun speed(style: WalkStyle, mood: Mood): Float {
         val mul = when (mood) {
@@ -164,6 +164,7 @@ fun RoamingYard(
     baseSpec: CharacterSpec,
     affection: Int,
     state: YardState,
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     val renderer = LocalCharacterRenderer.current
@@ -178,27 +179,30 @@ fun RoamingYard(
     )
 
     BoxWithConstraints(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(YARD),
+        modifier = modifier.fillMaxSize(),
     ) {
         val dp1 = with(density) { 1.dp.toPx() }
         val spritePx = with(density) { SPRITE.toPx() }
+        val bottomInsetPx = with(density) { bottomInset.toPx() }
         val rangePx = (with(density) { maxWidth.toPx() } - spritePx).coerceAtLeast(0f)
+        // 지면선 = 오버레이 하단 − 네비바 inset − 스프라이트(발이 네비바 위에 서게)
+        val groundTopY = (with(density) { maxHeight.toPx() } - bottomInsetPx - spritePx).coerceAtLeast(0f)
         val dims = YardDims(
             rangePx = rangePx,
-            yMinPx = -(with(density) { maxHeight.toPx() } - spritePx).coerceAtLeast(0f),
+            yMinPx = -groundTopY,
             hidePx = spritePx * 0.65f,
             jumpPx = 12f * dp1,
             dp1 = dp1,
+            groundTopY = groundTopY,
         )
         state.spritePx = spritePx
 
-        LaunchedEffect(rangePx, spritePx) {
+        LaunchedEffect(rangePx, spritePx, groundTopY) {
             if (rangePx <= 0f) return@LaunchedEffect
             // PEEK/GREET가 가장자리 밖으로 나갈 수 있게 확장 bounds(로밍·드래그는 [0,range] 유지)
             state.x.updateBounds(-dims.hidePx, rangePx + dims.hidePx)
             if (state.x.value !in 0f..rangePx) state.x.snapTo(rangePx / 2f)
+            state.baseY.snapTo(groundTopY) // 지면선에 발판 고정
             roamLoop(state, dims, ctxProvider)
         }
 
@@ -206,9 +210,9 @@ fun RoamingYard(
         val spec = specFor(baseSpec, state.behavior, ctx)
         Box(
             modifier = Modifier
-                .align(Alignment.BottomStart)
+                .align(Alignment.TopStart)
                 .size(SPRITE)
-                .offset { IntOffset(state.x.value.roundToInt(), state.y.value.roundToInt()) }
+                .offset { IntOffset(state.x.value.roundToInt(), (state.baseY.value + state.y.value).roundToInt()) }
                 .graphicsLayer {
                     scaleX = (if (state.facingLeft) -1f else 1f) * state.turn.value
                     rotationZ = (if (state.dragging) wobble * 8f else 0f) + state.rotation.value
@@ -272,14 +276,14 @@ fun RoamingYard(
             }
         }
 
-        // 착지 먼지 오버레이
+        // 착지 먼지 오버레이(스프라이트 발판을 따라감)
         if (state.dust.value > 0f) {
             val d = state.dust.value
             Canvas(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
+                    .align(Alignment.TopStart)
                     .size(SPRITE)
-                    .offset { IntOffset(state.x.value.roundToInt(), 0) },
+                    .offset { IntOffset(state.x.value.roundToInt(), state.baseY.value.roundToInt()) },
             ) {
                 val fy = size.height * 0.97f
                 val cx = size.width / 2f
