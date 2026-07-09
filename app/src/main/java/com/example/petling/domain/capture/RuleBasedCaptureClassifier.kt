@@ -44,12 +44,7 @@ class RuleBasedCaptureClassifier : CaptureClassifier {
     )
     private val chatKeywords = listOf("읽음", "안읽음", "님이 들어왔", "님이 나갔", "채팅방", "이모티콘", "답장")
 
-    override suspend fun classify(
-        ocrText: String,
-        parsedHasSchedule: Boolean,
-        scheduleTitle: String?,
-        categories: List<Category>,
-    ): Classification {
+    override suspend fun classify(ocrText: String, categories: List<Category>): Classification {
         val text = ocrText.trim()
         if (text.isBlank()) return result(BuiltInCatalog.MEMORY, categories, "캡처", 0.2f)
 
@@ -72,13 +67,8 @@ class RuleBasedCaptureClassifier : CaptureClassifier {
             keyFor(CaptureType.LINK, categories)?.let { return Classification(it, autoTitle(text), 0.75f) }
         }
 
-        // 일정: 날짜+시간이 있고 짧은 이벤트 메모일 때만
-        if (parsedHasSchedule && lineCount <= 6) {
-            keyFor(CaptureType.SCHEDULE, categories)?.let {
-                val title = scheduleTitle?.ifBlank { autoTitle(text) } ?: autoTitle(text)
-                return Classification(it, title, 0.8f)
-            }
-        }
+        // 일정(SCHEDULE) 판정은 여기서 하지 않는다 — 의도 우선 파이프라인에서
+        // 파싱 후 ScheduleReclassifier가 강한 timed seed 기준으로 승격한다.
 
         // ── 키워드 점수제(공부/장소/쇼핑/링크) — 활성 카테고리가 있는 종류만 ──
         val hasMoney = moneyRegex.containsMatchIn(text)

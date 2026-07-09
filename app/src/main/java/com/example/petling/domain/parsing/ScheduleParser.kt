@@ -21,10 +21,23 @@ data class ParsedScheduleDraft(
 )
 
 /**
+ * 의도 분류 결과가 파서에 주는 힌트. 정책(IntentParsingStrategy)이 결정한다.
+ */
+data class ParseHint(
+    /** LLM 파서를 생략하고 규칙 파서만 사용(지연 절약). */
+    val ruleOnly: Boolean = false,
+    /** 시간표: 요일 헤더의 날짜를 이후 시간만 있는 줄에 전파. */
+    val dateCarryAcrossLines: Boolean = false,
+)
+
+/**
  * 원시 텍스트(OCR/STT 결과)에서 일정 seed를 추출하는 파서.
  * 구현: RuleBasedScheduleParser(전 기기), (미래) GeminiNanoParser(지원 기기).
  * CompositeScheduleParser가 LLM → 규칙 폴백 순으로 조합한다.
  */
 interface ScheduleParser {
     suspend fun parse(rawText: String): List<ParsedDraftSeed>
+
+    /** 힌트를 지원하지 않는 구현은 무시해도 된다. */
+    suspend fun parse(rawText: String, hint: ParseHint): List<ParsedDraftSeed> = parse(rawText)
 }

@@ -2,8 +2,14 @@
 
 "OCR 텍스트 입력 → 기대 파싱 결과" 쌍을 자산으로 축적해, 파서를 수정할 때마다
 정확도 변화를 자동 측정한다. 러너는 `GoldenDatasetTest`(JVM 유닛 테스트)이며
-**규칙 파서(KoreanScheduleParser)만 채점**한다 — Gemini Nano 경로는 기기 의존이라
-CI 대상이 아니다. 데이터는 로컬 테스트 자산일 뿐 어디에도 전송되지 않는다.
+두 경로를 채점한다:
+
+- **parser**: 규칙 파서 단독 (`KoreanScheduleParser`)
+- **pipeline**: 분류 → 의도 정책 → 파싱 → 2-pass 재조정 (`GoldenPipeline`,
+  `CaptureRepository.ingest()`의 파싱 파이프라인과 동일 조립)
+
+Gemini Nano 경로는 기기 의존이라 CI 대상이 아니다. 데이터는 로컬 테스트
+자산일 뿐 어디에도 전송되지 않는다.
 
 ## 구조
 
@@ -46,8 +52,10 @@ golden/
   (weak 신호 캡과 맞물려 저신뢰 오탐을 흡수).
 - 기대 항목과 추출을 그리디 매칭, 쌍 점수 = date 0.4 + time 0.3 + title 0.2 + location 0.1.
 - 과잉 추출 감점: 기대 0건 케이스는 추출당 -0.5, 매칭 후 초과분은 건당 -0.25.
-- 총점 = 케이스 평균. `baseline.json`의 `parserTotal`(총점)과 `perCase`(케이스별) 대비
-  하락하면 테스트가 실패한다.
+- 총점 = 케이스 평균. `baseline.json`의 `parserTotal`/`pipelineTotal`(총점)과
+  `perCase`(케이스별 parser·pipeline 쌍) 대비 하락하면 테스트가 실패한다.
+- 의도 분류 정확도는 리포트로만 출력한다(게이트 아님) — 분류 개선과 파싱
+  개선을 분리 추적하기 위함.
 
 ## 케이스 추가 방법 (실사용 오파싱 발견 시)
 

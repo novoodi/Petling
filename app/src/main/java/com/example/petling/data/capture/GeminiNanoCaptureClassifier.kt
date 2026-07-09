@@ -4,7 +4,6 @@ import com.example.petling.domain.capture.CaptureClassifier
 import com.example.petling.domain.capture.CaptureSummarizer
 import com.example.petling.domain.capture.CaptureTitle
 import com.example.petling.domain.capture.Classification
-import com.example.petling.domain.model.BuiltInCatalog
 import com.example.petling.domain.model.Category
 import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.prompt.Generation
@@ -30,12 +29,7 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
     suspend fun availability(): Int =
         runCatching { model.checkStatus() }.getOrDefault(FeatureStatus.UNAVAILABLE)
 
-    override suspend fun classify(
-        ocrText: String,
-        parsedHasSchedule: Boolean,
-        scheduleTitle: String?,
-        categories: List<Category>,
-    ): Classification {
+    override suspend fun classify(ocrText: String, categories: List<Category>): Classification {
         if (ocrText.isBlank()) throw IllegalStateException("empty text")
         if (categories.isEmpty()) throw IllegalStateException("no categories")
 
@@ -53,12 +47,8 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
         val category = matchCategory(answer, categories)
             ?: throw IllegalStateException("unparsed nano answer: $answer")
 
-        val title = if (category.key == BuiltInCatalog.SCHEDULE && !scheduleTitle.isNullOrBlank()) {
-            scheduleTitle
-        } else {
-            CaptureTitle.autoTitle(ocrText)
-        }
-        return Classification(category.key, title, 0.9f)
+        // 일정 제목은 파싱 후 ScheduleReclassifier가 timed seed로 덮어쓴다.
+        return Classification(category.key, CaptureTitle.autoTitle(ocrText), 0.9f)
     }
 
     /** 캡처 내용을 한 문장으로 요약(온디바이스). 지원·성공 시에만 값, 그 외 null. */

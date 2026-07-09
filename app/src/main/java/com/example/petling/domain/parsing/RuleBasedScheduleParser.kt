@@ -18,9 +18,17 @@ class RuleBasedScheduleParser(
     override suspend fun parse(rawText: String): List<ParsedDraftSeed> =
         parseAt(rawText, clock.today())
 
+    override suspend fun parse(rawText: String, hint: ParseHint): List<ParsedDraftSeed> =
+        parseAt(rawText, clock.today(), hint)
+
     /** 테스트용: 기준일을 직접 넘겨 결정적으로 파싱. */
-    fun parseAt(rawText: String, today: LocalDate): List<ParsedDraftSeed> =
-        KoreanScheduleParser.parse(rawText, today, source).map { it.toSeed() }
+    fun parseAt(rawText: String, today: LocalDate, hint: ParseHint = ParseHint()): List<ParsedDraftSeed> =
+        KoreanScheduleParser.parse(
+            rawText,
+            today,
+            source,
+            KoreanScheduleParser.ParseOptions(dateCarryAcrossLines = hint.dateCarryAcrossLines),
+        ).map { it.toSeed() }
 }
 
 fun KoreanScheduleParser.ParsedLine.toSeed(): ParsedDraftSeed {

@@ -11,17 +11,13 @@ data class Classification(
 
 /**
  * 캡처 분류기. 사용자의 활성 카테고리 집합([categories]) 안에서만 분류한다.
+ * 의도 우선 파이프라인: 분류가 파싱보다 먼저 실행되므로 파서 결과에 의존하지 않는다.
+ * 일정 승격은 파싱 후 [ScheduleReclassifier]가 2-pass로 담당.
  *
- * @param parsedHasSchedule 규칙 파서가 날짜+시간을 뽑아냈는지(=일정성 캡처 힌트).
  * @param categories 활성 카테고리(비어 있지 않다고 가정; 항상 catch-all 포함).
  */
 interface CaptureClassifier {
-    suspend fun classify(
-        ocrText: String,
-        parsedHasSchedule: Boolean,
-        scheduleTitle: String?,
-        categories: List<Category>,
-    ): Classification
+    suspend fun classify(ocrText: String, categories: List<Category>): Classification
 }
 
 /** LLM(Nano) → 규칙 폴백. primary가 null이거나 실패하면 규칙으로 폴백. */
@@ -29,16 +25,10 @@ class CompositeCaptureClassifier(
     private val primary: CaptureClassifier?,
     private val fallback: CaptureClassifier,
 ) : CaptureClassifier {
-    override suspend fun classify(
-        ocrText: String,
-        parsedHasSchedule: Boolean,
-        scheduleTitle: String?,
-        categories: List<Category>,
-    ): Classification {
+    override suspend fun classify(ocrText: String, categories: List<Category>): Classification {
         primary?.let { p ->
-            runCatching { p.classify(ocrText, parsedHasSchedule, scheduleTitle, categories) }
-                .getOrNull()?.let { return it }
+            runCatching { p.classify(ocrText, categories) }.getOrNull()?.let { return it }
         }
-        return fallback.classify(ocrText, parsedHasSchedule, scheduleTitle, categories)
+        return fallback.classify(ocrText, categories)
     }
 }

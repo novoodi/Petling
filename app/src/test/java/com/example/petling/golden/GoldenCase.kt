@@ -35,10 +35,16 @@ data class GoldenSchedule(
 
 @Serializable
 data class GoldenBaseline(
-    val version: Int = 1,
+    val version: Int = 2,
+    /** 규칙 파서 단독 경로 총점. */
     val parserTotal: Double = 0.0,
-    val perCase: Map<String, Double> = emptyMap(),
+    /** 분류→정책→파싱→재조정 전체 경로 총점. */
+    val pipelineTotal: Double = 0.0,
+    val perCase: Map<String, CaseBaseline> = emptyMap(),
 )
+
+@Serializable
+data class CaseBaseline(val parser: Double, val pipeline: Double)
 
 object GoldenDataset {
     private val json = Json { ignoreUnknownKeys = true }
@@ -53,7 +59,7 @@ object GoldenDataset {
         json.decodeFromString(readResource("golden/baseline.json"))
 
     private fun readResource(path: String): String {
-        val stream = requireNotNull(GoldenDataset::class.java.classLoader.getResourceAsStream(path)) {
+        val stream = requireNotNull(GoldenDataset::class.java.getResourceAsStream("/$path")) {
             "테스트 리소스를 찾을 수 없음: $path"
         }
         return stream.bufferedReader().readText()

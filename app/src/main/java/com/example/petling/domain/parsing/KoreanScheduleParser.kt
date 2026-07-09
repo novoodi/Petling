@@ -45,9 +45,24 @@ object KoreanScheduleParser {
         val isImportant: Boolean,
     )
 
-    fun parse(rawText: String, today: LocalDate, source: ScheduleSource = ScheduleSource.MANUAL): List<ParsedLine> {
+    /** 의도 정책이 켜는 파싱 옵션. 기본값이면 기존 동작과 동일. */
+    data class ParseOptions(
+        /** 시간표: 앞선 줄의 날짜를 시간만 있는 이후 줄에 전파. */
+        val dateCarryAcrossLines: Boolean = false,
+    )
+
+    fun parse(
+        rawText: String,
+        today: LocalDate,
+        source: ScheduleSource = ScheduleSource.MANUAL,
+        options: ParseOptions = ParseOptions(),
+    ): List<ParsedLine> {
         val lines = segment(rawText)
-        val results = lines.mapNotNull { parseLine(it, today, source) }
+        val results = if (options.dateCarryAcrossLines) {
+            parseWithDateCarry(lines, today, source)
+        } else {
+            lines.mapNotNull { parseLine(it, today, source) }
+        }
         // 날짜/시간이 하나도 안 잡힌 경우: 전체를 제목 후보 1건으로
         if (results.isEmpty() && rawText.isNotBlank()) {
             val title = cleanTitle(rawText.replace("\n", " "))
@@ -59,6 +74,33 @@ object KoreanScheduleParser {
                         isImportant = hasImportant(title),
                     ),
                 )
+            }
+        }
+        return results
+    }
+
+    /**
+     * 시간표 모드: "수요일" 같은 헤더 줄의 날짜를 기억했다가,
+     * 시간만 있는 이후 줄("10:00 과학")에 전파한다.
+     * 전파된 날짜는 직접 신호(0.45)보다 약한 0.35만 confidence에 기여.
+     */
+    private fun parseWithDateCarry(lines: List<String>, today: LocalDate, source: ScheduleSource): List<ParsedLine> {
+        var carryDateIso: String? = null
+        val results = mutableListOf<ParsedLine>()
+        for (line in lines) {
+            val parsed = parseLine(line, today, source) ?: continue
+            if (parsed.draft.dateIso != null) {
+                carryDateIso = parsed.draft.dateIso
+                results += parsed
+            } else if (carryDateIso != null) {
+                results += parsed.copy(
+                    draft = parsed.draft.copy(
+                        dateIso = carryDateIso,
+                        confidence = (parsed.draft.confidence + 0.35f).coerceIn(0f, 1f),
+                    ),
+                )
+            } else {
+                results += parsed
             }
         }
         return results

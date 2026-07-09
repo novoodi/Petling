@@ -1,6 +1,7 @@
 package com.example.petling.data.repository
 
 import android.net.Uri
+import android.util.Log
 import com.example.petling.data.capture.ImageStore
 import com.example.petling.data.capture.OcrTextExtractor
 import com.example.petling.data.local.dao.CaptureDao
@@ -10,10 +11,13 @@ import com.example.petling.data.local.entity.toEntity
 import com.example.petling.domain.AppClock
 import com.example.petling.domain.capture.CaptureClassifier
 import com.example.petling.domain.capture.CaptureSummarizer
+import com.example.petling.domain.capture.ScheduleReclassifier
 import com.example.petling.domain.capture.UrlExtractor
 import com.example.petling.domain.model.CaptureItem
+import com.example.petling.domain.model.CaptureType
 import com.example.petling.domain.model.ParsedDraftSeed
 import com.example.petling.domain.model.Schedule
+import com.example.petling.domain.parsing.IntentParsingStrategy
 import com.example.petling.domain.parsing.ScheduleParser
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -44,6 +48,13 @@ class CaptureRepository(
     private val clock: AppClock,
 ) {
 
+    private companion object {
+        const val TAG = "CapturePipeline"
+
+        /** 이 미만 confidence seed는 일정 제안·자동 등록 후보에서 제외(weak 오탐 흡수). */
+        const val MIN_SEED_CONFIDENCE = 0.35f
+    }
+
     fun observeAll(): Flow<List<CaptureItem>> =
         captureDao.observeAll().map { list -> list.map { it.toDomain() } }
 
@@ -63,15 +74,35 @@ class CaptureRepository(
         val imagePath = imageStore.save(uri) ?: return null
         val ocrText = ocr.extract(uri)
 
-        val seeds = parser.parse(ocrText)
-        // "일정으로 등록"용 seed는 날짜만 있어도 됨(종일 일정 가능)
-        val scheduleSeed = seeds.firstOrNull { it.date != null }
+        // 1) 의도 분류 먼저 — 의도가 파싱 정책을 결정한다
+        val categories = categoryRepository.enabledForClassify()
+        val firstPass = classifier.classify(ocrText, categories)
+        val baseType = categories.firstOrNull { it.key == firstPass.categoryKey }?.baseType
+            ?: CaptureType.MEMORY
+
+        // 2) 의도별 정책을 적용해 파싱 (로그에 사용자 콘텐츠 금지 — 정책 필드만)
+        val policy = IntentParsingStrategy.policyFor(baseType, firstPass.confidence)
+        Log.d(
+            TAG,
+            "policy base=$baseType conf=${firstPass.confidence} strip=${policy.stripPatterns.size} " +
+                "ruleOnly=${policy.ruleOnly} suppress=${policy.suppressSeedsBelow} " +
+                "mul=${policy.confidenceMul} carry=${policy.dateCarryAcrossLines}",
+        )
+        val parseText = IntentParsingStrategy.applyStrip(policy, ocrText)
+        val seeds = IntentParsingStrategy.postProcess(policy, parser.parse(parseText, policy.toHint()))
+
+        // "일정으로 등록"용 seed는 날짜만 있어도 됨(종일 일정 가능) — weak 오탐(conf<=0.3)은 제외
+        val scheduleSeed = seeds.firstOrNull { it.date != null && it.confidence >= MIN_SEED_CONFIDENCE }
         // 날짜 AND 시간이 뚜렷한 seed → 비서가 자동 등록
         val timedSeed = seeds.firstOrNull { it.date != null && it.startMinuteOfDay != null }
-        val hasScheduleDateTime = timedSeed != null
 
-        val categories = categoryRepository.enabledForClassify()
-        val classification = classifier.classify(ocrText, hasScheduleDateTime, scheduleSeed?.title, categories)
+        // 3) 2-pass: 강한 파싱 결과가 나오면 catch-all/저신뢰 분류를 일정으로 재조정
+        val lineCount = parseText.lineSequence().count { it.isNotBlank() }
+        val classification = ScheduleReclassifier.maybePromote(firstPass, timedSeed, lineCount, categories)
+        if (classification.categoryKey != firstPass.categoryKey) {
+            Log.d(TAG, "reclassified ${firstPass.categoryKey} -> ${classification.categoryKey}")
+        }
+
         val linkUrl = UrlExtractor.firstUrl(ocrText)
 
         // 캡처 insert 전에 이 카테고리가 처음인지 판정(다양성 보너스)

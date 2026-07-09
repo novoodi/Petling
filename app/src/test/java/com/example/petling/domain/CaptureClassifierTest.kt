@@ -8,6 +8,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * 규칙 분류기 테스트. 의도 우선 파이프라인에서 분류기는 파서 결과를 모른다 —
+ * SCHEDULE 승격 동작은 ScheduleReclassifierTest가 검증한다.
+ */
 class CaptureClassifierTest {
 
     private val classifier = RuleBasedCaptureClassifier()
@@ -15,15 +19,8 @@ class CaptureClassifierTest {
     // 규칙은 기본 7종 활성 카테고리 안에서 분류한다. 빌트인 key == CaptureType.name.
     private val cats = BuiltInCatalog.defaults
 
-    private fun keyOf(text: String, hasSchedule: Boolean = false, scheduleTitle: String? = null): String =
-        runBlocking { classifier.classify(text, hasSchedule, scheduleTitle, cats).categoryKey }
-
-    @Test
-    fun schedule_wins_when_parser_found_datetime() {
-        val c = runBlocking { classifier.classify("3월 15일 오후 3시 학원 상담", parsedHasSchedule = true, scheduleTitle = "상담", cats) }
-        assertEquals(CaptureType.SCHEDULE.name, c.categoryKey)
-        assertEquals("상담", c.title)
-    }
+    private fun keyOf(text: String): String =
+        runBlocking { classifier.classify(text, cats).categoryKey }
 
     @Test
     fun link_by_url() {
@@ -52,8 +49,8 @@ class CaptureClassifierTest {
     }
 
     @Test
-    fun chat_with_datetime_is_chat_not_schedule() {
-        // 카톡 로그는 날짜+시간이 있어도 대화로(일정보다 먼저 판정)
+    fun chat_wins_even_with_datetime_in_text() {
+        // 카톡 로그는 날짜+시간 표현이 있어도 대화로 (일정 승격은 2-pass가 걸러냄)
         val kakao = """
             민준
             오후 2:14 내일 3시에 보자
@@ -62,20 +59,20 @@ class CaptureClassifierTest {
             민준
             오후 2:16 강남역
         """.trimIndent()
-        assertEquals(CaptureType.CHAT.name, runBlocking { classifier.classify(kakao, parsedHasSchedule = true, scheduleTitle = "보자", cats).categoryKey })
+        assertEquals(CaptureType.CHAT.name, keyOf(kakao))
     }
 
     @Test
-    fun long_text_with_datetime_is_not_schedule() {
-        // 날짜+시간이 있어도 라인이 많으면(게시물/공지 등) 일정으로 단정하지 않는다
-        val longPost = (1..10).joinToString("\n") { "게시물 내용 줄 $it 입니다 어쩌구저쩌구" } + "\n3월 15일 오후 3시"
-        assertEquals(false, runBlocking { classifier.classify(longPost, parsedHasSchedule = true, scheduleTitle = null, cats).categoryKey } == CaptureType.SCHEDULE.name)
+    fun plain_schedule_memo_falls_to_memory() {
+        // 분류기는 일정을 직접 판정하지 않는다 — 키워드 없는 짧은 메모는 catch-all.
+        // 이런 캡처는 파싱 후 ScheduleReclassifier가 SCHEDULE로 승격한다.
+        assertEquals(CaptureType.MEMORY.name, keyOf("3월 15일 오후 3시 학원 상담"))
     }
 
     @Test
     fun no_datetime_is_not_schedule() {
-        // 날짜+시간이 없으면 일정 아님(제목만 있는 캡처는 추억/기타)
-        assertEquals(CaptureType.MEMORY.name, runBlocking { classifier.classify("친구랑 찍은 사진", parsedHasSchedule = false, scheduleTitle = null, cats).categoryKey })
+        // 제목만 있는 캡처는 추억/기타
+        assertEquals(CaptureType.MEMORY.name, keyOf("친구랑 찍은 사진"))
     }
 
     @Test
@@ -139,8 +136,6 @@ class CaptureClassifierTest {
         val c = runBlocking {
             classifier.classify(
                 "이것은 아주 긴 첫 번째 줄이고 제목으로 잘려야 하는 텍스트입니다 정말 길어요",
-                parsedHasSchedule = false,
-                scheduleTitle = null,
                 cats,
             )
         }
@@ -157,7 +152,7 @@ class CaptureClassifierTest {
     fun disabled_type_falls_back_to_catch_all() {
         // LINK를 끈 사용자면 URL이어도 catch-all(MEMORY)로 — 활성 집합만 사용
         val noLink = cats.filter { it.key != CaptureType.LINK.name }
-        val key = runBlocking { classifier.classify("https://example.com 좋은 링크", false, null, noLink).categoryKey }
+        val key = runBlocking { classifier.classify("https://example.com 좋은 링크", noLink).categoryKey }
         assertEquals(CaptureType.MEMORY.name, key)
     }
 }

@@ -13,11 +13,15 @@ class CompositeScheduleParser(
     private val fallback: ScheduleParser,
 ) : ScheduleParser {
 
-    override suspend fun parse(rawText: String): List<ParsedDraftSeed> {
-        primary?.let { p ->
-            val result = runCatching { p.parse(rawText) }.getOrNull()
-            if (!result.isNullOrEmpty()) return result
+    override suspend fun parse(rawText: String): List<ParsedDraftSeed> = parse(rawText, ParseHint())
+
+    override suspend fun parse(rawText: String, hint: ParseHint): List<ParsedDraftSeed> {
+        if (!hint.ruleOnly) {
+            primary?.let { p ->
+                val result = runCatching { p.parse(rawText) }.getOrNull()
+                if (!result.isNullOrEmpty()) return result
+            }
         }
-        return fallback.parse(rawText)
+        return fallback.parse(rawText, hint)
     }
 }
