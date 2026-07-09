@@ -32,7 +32,6 @@ fun DrawScope.drawCreature(
     crackProgress: Float = 0f,
     hatchAlpha: Float = 1f,
     motion: CreatureMotion = CreatureMotion.STATIC,
-    view: CreatureView = CreatureView.FRONT,
 ) {
     val s = size.minDimension
     val origin = Offset((size.width - s) / 2f, (size.height - s) / 2f)
@@ -53,24 +52,6 @@ fun DrawScope.drawCreature(
     }
 
     val pose = poseFor(expression)
-
-    // 옆모습(보행). ACORN은 옆모습이 없어(구르기 이동) FRONT로 폴백.
-    if (view == CreatureView.SIDE && species != Species.ACORN) {
-        val sp = sideProportionsFor(species, stage)
-        when (species) {
-            Species.FOX -> drawFoxSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
-            Species.CAT -> drawCatSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
-            Species.RABBIT -> drawRabbitSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
-            Species.CHICK -> drawChickSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
-            Species.DOG -> drawDogSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
-            Species.HAMSTER -> drawHamsterSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
-            Species.PENGUIN -> drawPenguinSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
-            Species.PANDA -> drawPandaSide(::p, ::d, palette, sp, pose, motion, eyeStyle, blink, lod)
-            Species.ACORN -> Unit
-        }
-        // 액세서리·기분 이펙트는 정면 전용(보행은 수 초의 과도 상태)
-        return
-    }
 
     val prop = proportionsFor(species, stage)
     val iris = irisFor(species, palette)
@@ -93,16 +74,3 @@ fun DrawScope.drawCreature(
     drawStageAccessories(::p, ::d, palette, species, stage, branch, prop, lod)
     drawMoodEffects(::p, ::d, mood, expression, prop, motion, lod)
 }
-
-/** 하위 호환: 기존 도토리 호출부. */
-fun DrawScope.drawModori(
-    stage: GrowthStage,
-    branch: Branch?,
-    mood: Mood,
-    expression: Expression,
-    palette: ModoriPalette,
-    eyeStyle: Int,
-    blink: Float = 0f,
-    crackProgress: Float = 0f,
-    hatchAlpha: Float = 1f,
-) = drawCreature(Species.ACORN, stage, branch, mood, expression, palette, eyeStyle, blink, crackProgress, hatchAlpha)

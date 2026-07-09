@@ -17,7 +17,6 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import com.example.petling.domain.model.CharacterAnimation
 import com.example.petling.domain.model.CharacterSpec
-import com.example.petling.domain.model.Species
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
@@ -118,10 +117,13 @@ class CanvasCharacterRenderer : CharacterRenderer {
             label = "bounce",
         )
 
-        // 보행 위상(WALK): 옆모습 다리 걸음질 사이클
+        // 보행 위상(WALK): 정면 홉 사이클. 주기는 종별 홉 스타일이 결정한다.
         val walkPhase by transition.animateFloat(
             initialValue = 0f, targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(480, easing = LinearEasing), RepeatMode.Restart),
+            animationSpec = infiniteRepeatable(
+                tween(hopStyleFor(spec.species).periodMs, easing = LinearEasing),
+                RepeatMode.Restart,
+            ),
             label = "walk",
         )
 
@@ -174,31 +176,21 @@ class CanvasCharacterRenderer : CharacterRenderer {
             var tilt = 0f
             var motion = CreatureMotion.STATIC
             var eyeBlink = blink
-            var view = CreatureView.FRONT
 
             if (walking) {
-                if (spec.species == Species.ACORN) {
-                    // 도토리는 옆모습 없음(구르기 이동) — 정면 뒤뚱 유지
-                    val s = sin(walkPhase * 2 * PI).toFloat()
-                    val stride = abs(s)
-                    dy = -stride * base * 0.02f
-                    tilt = s * 4f
-                    scaleY = 1f - stride * 0.03f
-                    scaleX = 1f + stride * 0.02f
-                    motion = CreatureMotion(tailWag = walkPhase, breathe = bob, effectPhase = effectPhase)
-                } else {
-                    // 옆모습 보행: 다리가 실제로 걸음질. 종별 걸음새(주기·롤)는 GaitSpec.
-                    view = CreatureView.SIDE
-                    val gait = gaitFor(spec.species)
-                    val phi = (walkPhase * gait.freqMul) % 1f
-                    tilt = if (gait.rollDeg > 0f) sin(phi * 2 * PI).toFloat() * gait.rollDeg else 0f
-                    motion = CreatureMotion(
-                        tailWag = walkPhase,
-                        breathe = bob,
-                        effectPhase = effectPhase,
-                        walkCycle = phi,
-                    )
-                }
+                // 정면 홉 보행: 정면 유지 + 진행 방향 기울임 + 통통 홉(squash/stretch) + 착지 먼지.
+                // 좌/우 방향은 호출부 graphicsLayer scaleX 반전이 처리한다.
+                val pose = hopPose(hopStyleFor(spec.species), walkPhase)
+                dy = pose.dyNorm * base
+                tilt = pose.tiltDeg
+                scaleX = pose.scaleX
+                scaleY = pose.scaleY
+                motion = CreatureMotion(
+                    tailWag = walkPhase,
+                    breathe = bob,
+                    effectPhase = effectPhase,
+                    dust = pose.dust,
+                )
             } else if (sleeping) {
                 dy = sleepBreathe * base * 0.022f
                 tilt = 2.5f
@@ -269,7 +261,6 @@ class CanvasCharacterRenderer : CharacterRenderer {
                             eyeStyle = spec.eyeStyle,
                             blink = eyeBlink,
                             motion = motion,
-                            view = view,
                         )
                     }
                 }

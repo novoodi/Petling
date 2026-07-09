@@ -5,7 +5,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
-import com.example.petling.domain.model.Species
 
 private val SEED = Color(0xFF6B5138)
 private val SEED_STRIPE = Color(0xFFF3E3C6)
@@ -92,41 +91,4 @@ internal fun DrawScope.drawHamster(
     listOf(-1f, 1f).forEach { s ->
         outlinedOval(p, d, cx + s * halfW * 0.34f, bot - 0.008f, 0.032f, 0.018f, palette.bodyHighlight, palette.outline, OUT_W_S * 0.8f)
     }
-}
-
-/** 햄스터 옆모습(종종걸음): 짧은 다리 빠른 스윙 + 볼주머니 + 꼬마 꼬리. */
-internal fun DrawScope.drawHamsterSide(
-    p: (Float, Float) -> Offset,
-    d: (Float) -> Float,
-    palette: ModoriPalette,
-    sp: SideProportions,
-    pose: FacePose,
-    motion: CreatureMotion,
-    eyeStyle: Int,
-    blink: Float,
-    lod: Lod,
-) {
-    val phi = motion.walkCycle
-    val gait = gaitFor(Species.HAMSTER)
-
-    // 꼬마 꼬리
-    drawCircle(palette.bodyShadow, radius = d(0.018f), center = p(sp.bodyCx - sp.bodyHalfLen * 1.02f, sp.bodyCy + sp.bodyHalfHt * 0.2f))
-
-    drawQuadrupedCore(p, d, palette, sp, phi, gait, lod)
-
-    // 작은 반원 귀
-    drawCircle(palette.body, radius = d(sp.headR * 0.30f), center = p(sp.headCx - sp.headR * 0.05f, sp.headCy - sp.headR * 0.75f))
-    drawCircle(palette.earInner, radius = d(sp.headR * 0.16f), center = p(sp.headCx - sp.headR * 0.05f, sp.headCy - sp.headR * 0.75f))
-
-    // 볼주머니(앞볼 불룩)
-    drawOval(
-        palette.bodyHighlight.copy(alpha = 0.75f),
-        topLeft = p(sp.headCx + sp.headR * 0.25f, sp.headCy + sp.headR * 0.1f),
-        size = Size(d(sp.headR * 0.55f), d(sp.headR * 0.45f)),
-    )
-
-    // 코(분홍 점)
-    drawCircle(palette.nose, radius = d(sp.headR * 0.08f), center = p(sp.headCx + sp.headR * 0.9f, sp.headCy + sp.headR * 0.05f))
-
-    drawSideFace(p, d, palette, sp.headCx, sp.headCy, sp.headR, pose, irisFor(Species.HAMSTER, palette), eyeStyle, blink, lod)
 }

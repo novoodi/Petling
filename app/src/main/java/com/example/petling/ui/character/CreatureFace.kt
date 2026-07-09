@@ -212,33 +212,6 @@ private fun DrawScope.drawMouth(
     }
 }
 
-/**
- * 옆모습 얼굴(오른쪽 진행 기준): 앞쪽 눈 1개 + 볼터치 1개.
- * 주둥이·코·귀는 종별 side 드로잉이 그린다. 눈썹·눈물은 보행 중 생략.
- */
-fun DrawScope.drawSideFace(
-    p: (Float, Float) -> Offset,
-    d: (Float) -> Float,
-    palette: ModoriPalette,
-    headCx: Float,
-    headCy: Float,
-    headR: Float,
-    pose: FacePose,
-    irisColor: Color,
-    eyeStyle: Int,
-    blink: Float,
-    lod: Lod,
-) {
-    val eyeR = headR * 0.26f
-    val center = p(headCx + headR * 0.35f, headCy - headR * 0.08f)
-    drawCircle(
-        palette.cheek.copy(alpha = 0.45f),
-        radius = d(headR * 0.18f),
-        center = p(headCx + headR * 0.3f, headCy + headR * 0.32f),
-    )
-    drawEye(p, d, center, eyeR, pose, irisColor, eyeStyle, blink, lod, mirror = false)
-}
-
 /** 종별 홍채 색. */
 fun irisFor(species: Species, palette: ModoriPalette): Color = when (species) {
     Species.FOX -> Color.hsl(38f, 0.62f, 0.42f)

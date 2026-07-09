@@ -6,7 +6,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
-import com.example.petling.domain.model.Species
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -91,48 +90,4 @@ internal fun DrawScope.drawDog(
         size = Size(d(hr * 0.80f), d(hr * 0.58f)),
     )
     fillOval(p, d, cx, hc + hr * 0.44f, hr * 0.15f, hr * 0.11f, palette.nose)
-}
-
-/** 강아지 옆모습(보행): 늘어진 귀가 걸음에 맞춰 흔들리고, 말린 꼬리·초콜릿 귀. */
-internal fun DrawScope.drawDogSide(
-    p: (Float, Float) -> Offset,
-    d: (Float) -> Float,
-    palette: ModoriPalette,
-    sp: SideProportions,
-    pose: FacePose,
-    motion: CreatureMotion,
-    eyeStyle: Int,
-    blink: Float,
-    lod: Lod,
-) {
-    val phi = motion.walkCycle
-    val gait = gaitFor(Species.DOG)
-
-    // 말린 꼬리(엉덩이 끝에 붙은 나선 근사) — 몸 실루엣에 겹치게
-    val tailX = sp.bodyCx - sp.bodyHalfLen * 1.02f
-    val tailY = sp.bodyCy - sp.bodyHalfHt * 0.55f
-    val wag = sin(motion.tailWag * 2 * PI).toFloat() * 10f
-    rotate(wag, pivot = p(tailX + 0.02f, tailY + 0.03f)) {
-        drawCircle(palette.body, radius = d(0.048f), center = p(tailX, tailY))
-        drawCircle(palette.bodyHighlight.copy(alpha = 0.55f), radius = d(0.022f), center = p(tailX, tailY - 0.012f))
-    }
-
-    drawQuadrupedCore(p, d, palette, sp, phi, gait, lod)
-
-    // 늘어진 귀(머리 옆, 걸음에 맞춰 ±8° 스윙) — 초콜릿
-    val earSwing = sin(phi * 2 * PI).toFloat() * 8f
-    rotate(10f + earSwing + pose.earDroop * 12f, pivot = p(sp.headCx - sp.headR * 0.1f, sp.headCy - sp.headR * 0.55f)) {
-        drawOval(
-            palette.marking,
-            topLeft = p(sp.headCx - sp.headR * 0.35f, sp.headCy - sp.headR * 0.6f),
-            size = Size(d(sp.headR * 0.5f), d(sp.headR * 1.05f)),
-        )
-    }
-
-    // 주둥이 + 코
-    val mzY = sp.headCy + sp.headR * 0.2f
-    drawOval(palette.belly, topLeft = p(sp.headCx + sp.headR * 0.32f, mzY - sp.headR * 0.26f), size = Size(d(sp.headR * 0.7f), d(sp.headR * 0.48f)))
-    drawCircle(palette.nose, radius = d(sp.headR * 0.10f), center = p(sp.headCx + sp.headR * 0.95f, mzY - sp.headR * 0.08f))
-
-    drawSideFace(p, d, palette, sp.headCx, sp.headCy, sp.headR, pose, irisFor(Species.DOG, palette), eyeStyle, blink, lod)
 }

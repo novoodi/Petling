@@ -7,7 +7,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import com.example.petling.domain.model.GrowthStage
-import com.example.petling.domain.model.Species
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -130,75 +129,4 @@ internal fun DrawScope.drawChick(
         p(cx, beakCy + bh * 0.74f),
         BEAK_DARK,
     )
-}
-
-/** 병아리 옆모습(2족 보행): 세로 몸통 + 두 다리 교차 + 날개 퍼덕 + 부리. */
-internal fun DrawScope.drawChickSide(
-    p: (Float, Float) -> Offset,
-    d: (Float) -> Float,
-    palette: ModoriPalette,
-    sp: SideProportions,
-    pose: FacePose,
-    motion: CreatureMotion,
-    eyeStyle: Int,
-    blink: Float,
-    lod: Lod,
-) {
-    val phi = motion.walkCycle
-    val gait = gaitFor(Species.CHICK)
-
-    // 꽁지 솜털(뒤) — 몸 뒤에 붙은 작은 깃 두 개
-    drawCircle(
-        palette.bodyShadow.copy(alpha = 0.8f),
-        radius = d(0.032f),
-        center = p(sp.bodyCx - sp.bodyHalfLen * 1.05f, sp.bodyCy - sp.bodyHalfHt * 0.1f),
-    )
-    drawCircle(
-        palette.bodyShadow.copy(alpha = 0.7f),
-        radius = d(0.022f),
-        center = p(sp.bodyCx - sp.bodyHalfLen * 1.25f, sp.bodyCy - sp.bodyHalfHt * 0.3f),
-    )
-
-    drawBipedCore(p, d, palette, sp, phi, gait, BEAK_DARK, lod)
-
-    // 머리(몸 위 앞쪽, 한 덩어리로 겹침 + 아웃라인)
-    outlinedOval(p, d, sp.headCx, sp.headCy, sp.headR, sp.headR, vGrad(p, sp.headCx, sp.headCy, sp.headR, palette.bodyHighlight, palette.body), palette.outline)
-
-    // 가슴 크림(앞쪽)
-    drawOval(
-        palette.belly.copy(alpha = 0.9f),
-        topLeft = p(sp.bodyCx, sp.bodyCy - sp.bodyHalfHt * 0.3f),
-        size = Size(d(sp.bodyHalfLen * 0.9f), d(sp.bodyHalfHt * 1.1f)),
-    )
-
-    // 날개(근측, 걸음에 맞춰 미세 퍼덕)
-    val flap = sin(phi * 2 * PI).toFloat() * 4f
-    rotate(flap, pivot = p(sp.bodyCx, sp.bodyCy - sp.bodyHalfHt * 0.2f)) {
-        drawOval(
-            palette.bodyShadow.copy(alpha = 0.85f),
-            topLeft = p(sp.bodyCx - sp.bodyHalfLen * 0.55f, sp.bodyCy - sp.bodyHalfHt * 0.35f),
-            size = Size(d(sp.bodyHalfLen * 0.9f), d(sp.bodyHalfHt * 0.8f)),
-        )
-    }
-
-    // 정수리 솜털
-    listOf(-0.015f, 0.015f).forEach { dx ->
-        drawLine(
-            palette.outline.copy(alpha = 0.85f),
-            p(sp.headCx + dx, sp.headCy - sp.headR * 0.8f),
-            p(sp.headCx + dx * 2.2f, sp.headCy - sp.headR * 1.1f),
-            strokeWidth = d(0.008f),
-        )
-    }
-
-    // 부리(앞)
-    val by = sp.headCy + sp.headR * 0.12f
-    triangle(
-        p(sp.headCx + sp.headR * 0.55f, by - sp.headR * 0.14f),
-        p(sp.headCx + sp.headR * 0.55f, by + sp.headR * 0.10f),
-        p(sp.headCx + sp.headR * 1.05f, by - sp.headR * 0.02f),
-        BEAK, palette.outline, d,
-    )
-
-    drawSideFace(p, d, palette, sp.headCx, sp.headCy, sp.headR, pose, irisFor(Species.CHICK, palette), eyeStyle, blink, lod)
 }
