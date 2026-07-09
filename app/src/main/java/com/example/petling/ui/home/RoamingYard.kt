@@ -102,8 +102,13 @@ class YardState {
 @Composable
 fun rememberYardState(): YardState = remember { YardState() }
 
-/** 로밍 루프가 참조하는 캐릭터 컨텍스트(종·기분·호감도). */
-data class YardContext(val species: Species, val mood: Mood, val affection: Int) {
+/** 로밍 루프가 참조하는 캐릭터 컨텍스트(종·기분·호감도·성격). */
+data class YardContext(
+    val species: Species,
+    val mood: Mood,
+    val affection: Int,
+    val personality: com.example.petling.domain.model.Personality? = null,
+) {
     val level: AffectionLevel get() = affectionLevel(affection)
 }
 
@@ -170,7 +175,7 @@ fun RoamingYard(
 ) {
     val renderer = LocalCharacterRenderer.current
     val density = LocalDensity.current
-    val ctxProvider = rememberUpdatedState(YardContext(baseSpec.species, baseSpec.mood, affection))
+    val ctxProvider = rememberUpdatedState(YardContext(baseSpec.species, baseSpec.mood, affection, baseSpec.personality))
     val scope = rememberCoroutineScope()
 
     val wobble by rememberInfiniteTransition(label = "wobble").animateFloat(
@@ -320,7 +325,7 @@ private suspend fun roamLoop(
         pending = null
         val ctx = ctxProvider.value
         // 이벤트가 없는 idle 차례엔 확률적으로 근처 perch로 이동해 앉는다(성격 편향은 커밋3).
-        val perchId = if (ev == null) choosePerch(registry, state, dims, lastBehavior) else null
+        val perchId = if (ev == null) choosePerch(registry, state, dims, lastBehavior, ctx.personality) else null
         var chosen = YardBehavior.PAUSE
         val interrupt = raceEvents(state) {
             if (perchId != null) {
@@ -390,17 +395,35 @@ private fun weightedPick(weights: List<Pair<YardBehavior, Int>>): YardBehavior {
 
 // ─────────────────────────── perch(착지) ───────────────────────────
 
-/** idle 차례에 근처 perch로 갈지 결정. 커밋2는 단순 확률; 성격 편향은 커밋3. */
+/** idle 차례에 근처 perch로 갈지 결정. 성격별 perchUrge 확률 + perch 선택 편향. */
 private fun choosePerch(
     registry: com.example.petling.ui.overlay.PerchRegistry?,
     state: YardState,
     dims: YardDims,
     last: YardBehavior,
+    personality: com.example.petling.domain.model.Personality?,
 ): String? {
     if (registry == null || last == YardBehavior.SIT) return null // 방금 앉았다 내려왔으면 잠시 배회
     val cand = registry.candidates().filter { inViewport(it.rect, dims) }
-    if (cand.isEmpty() || Random.nextFloat() >= 0.35f) return null
-    return cand.random().id
+    if (cand.isEmpty()) return null
+    val bias = personalityBiasFor(personality)
+    if (Random.nextFloat() >= bias.perchUrge) return null
+    return pickPerch(cand, personality, state, bias).id
+}
+
+/** perch 선택: 걱정형=weight 최대, 몽상형=가장 가까운 곳, 그 외=무작위. */
+private fun pickPerch(
+    cand: List<com.example.petling.ui.overlay.PerchInfo>,
+    personality: com.example.petling.domain.model.Personality?,
+    state: YardState,
+    bias: PersonalityBias,
+): com.example.petling.ui.overlay.PerchInfo = when {
+    bias.prefersWeight && cand.any { it.weight > 0f } -> cand.maxByOrNull { it.weight }!!
+    personality == com.example.petling.domain.model.Personality.DREAMER -> {
+        val cx = state.x.value + state.spritePx / 2f
+        cand.minByOrNull { abs(it.rect.center.x - cx) }!!
+    }
+    else -> cand.random()
 }
 
 /** perch가 오버레이 콘텐츠 영역 안에 온전히 보이는지. */
@@ -437,8 +460,9 @@ private suspend fun executePerchVisit(
         state.baseY.animateTo(perchBaseY(rect, state.spritePx, dims), tween(320, easing = Motion.Decelerate))
     }
     land(state)
-    // 3) 스크롤 추적 + 체류
-    followPerch(state, dims, registry, perchId)
+    // 3) 스크롤 추적 + 체류(성격별 체류 시간)
+    val dwellMs = personalityBiasFor(ctx.personality).sitDwellMs.random()
+    followPerch(state, dims, registry, perchId, dwellMs)
     // 4) 바닥으로 뛰어내림
     dismount(state, dims)
 }
@@ -449,9 +473,9 @@ private suspend fun followPerch(
     dims: YardDims,
     registry: com.example.petling.ui.overlay.PerchRegistry,
     perchId: String,
+    dwellMs: Long,
 ) {
     val start = System.currentTimeMillis()
-    val dwellMs = 6000L // 성격 편향(체류 시간)은 커밋3
     while (coroutineContext.isActive) {
         val rect = registry.rectOf(perchId) ?: return
         if (!inViewport(rect, dims)) return

@@ -3,6 +3,7 @@ package com.example.petling.ui.home
 import com.example.petling.domain.engine.AffectionLevel
 import com.example.petling.domain.engine.AffectionRules
 import com.example.petling.domain.model.Mood
+import com.example.petling.domain.model.Personality
 import com.example.petling.domain.model.Species
 
 /**
@@ -111,3 +112,20 @@ fun idleWeights(species: Species, last: YardBehavior, mood: Mood): List<Pair<Yar
 
 /** 호감도 원값 → 단계(편의 위임). */
 fun affectionLevel(affection: Int): AffectionLevel = AffectionRules.levelFor(affection)
+
+/**
+ * 성격별 perch 편향. 종 기질([TemperamentProfile])과 분리 — 기질=마당 행동 선택,
+ * 이건 "perch에 얼마나 자주·오래 앉는가, 어떤 perch를 고르는가".
+ */
+data class PersonalityBias(
+    val perchUrge: Float,        // idle 차례에 perch로 이동할 확률
+    val sitDwellMs: LongRange,   // 착지 후 체류 시간
+    val prefersWeight: Boolean,  // true=weight(마감 임박) 최대 perch 우선(걱정형)
+)
+
+fun personalityBiasFor(p: Personality?): PersonalityBias = when (p) {
+    Personality.FREE_SPIRIT -> PersonalityBias(0.50f, 2500L..4500L, false) // 자주 갈아탐, 짧게
+    Personality.DREAMER -> PersonalityBias(0.20f, 9000L..16000L, false)    // 드물게, 한 자리 오래
+    Personality.WORRIER -> PersonalityBias(0.40f, 3000L..6000L, true)      // 마감 임박 perch 우선
+    Personality.SINCERE, null -> PersonalityBias(0.32f, 5000L..8000L, false)
+}
