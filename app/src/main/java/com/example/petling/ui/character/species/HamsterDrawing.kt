@@ -39,8 +39,8 @@ internal fun DrawScope.drawHamster(
         drawCircle(palette.earInner, radius = d(prop.earLen * 0.52f), center = p(ex, ey + prop.earLen * 0.08f))
     }
 
-    // 한 덩어리 블롭 몸통(가로로 퍼짐)
-    drawEggBody(p, d, top, bot, halfW, vGrad(p, cx, (top + bot) / 2f, (bot - top) / 2f, palette.bodyHighlight, palette.body), palette.outline)
+    // 웅크린 공 몸통(가로>세로 땅딸보, 최광폭 하단 1/3)
+    drawCrouchedBallBody(p, d, top, bot, halfW, vGrad(p, cx, (top + bot) / 2f, (bot - top) / 2f, palette.bodyHighlight, palette.body), palette.outline)
 
     // 볼주머니(양옆 불룩, 성장할수록 빵빵 — 면 마킹)
     val cheekR = hr * (0.34f + prop.fluff * 0.14f)
