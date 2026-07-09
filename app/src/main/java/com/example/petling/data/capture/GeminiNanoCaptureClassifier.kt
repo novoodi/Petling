@@ -33,19 +33,31 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
         if (ocrText.isBlank()) throw IllegalStateException("empty text")
         if (categories.isEmpty()) throw IllegalStateException("no categories")
 
-        when (model.checkStatus()) {
+        when (val status = model.checkStatus()) {
             FeatureStatus.AVAILABLE -> Unit
             FeatureStatus.DOWNLOADABLE -> {
+                NanoLog.d("classifier", "download_needed")
                 ensureDownload()
                 throw IllegalStateException("nano downloadable — fall back this time")
             }
-            else -> throw IllegalStateException("nano unavailable")
+            else -> {
+                NanoLog.d("classifier", "status_fail", "status=$status")
+                throw IllegalStateException("nano unavailable")
+            }
         }
 
-        val response = model.generateContent(buildPrompt(ocrText, categories))
+        val response = runCatching { model.generateContent(buildPrompt(ocrText, categories)) }
+            .getOrElse { e ->
+                NanoLog.d("classifier", "gen_fail", "textLen=${ocrText.length}")
+                throw IllegalStateException("nano generate failed", e)
+            }
         val answer = response.candidates.firstOrNull()?.text.orEmpty()
         val category = matchCategory(answer, categories)
-            ?: throw IllegalStateException("unparsed nano answer: $answer")
+        if (category == null) {
+            NanoLog.d("classifier", "match_fail", "answerLen=${answer.length}")
+            throw IllegalStateException("unparsed nano answer")
+        }
+        NanoLog.d("classifier", "ok", "key=${category.key}")
 
         // 일정 제목은 파싱 후 ScheduleReclassifier가 timed seed로 덮어쓴다.
         return Classification(category.key, CaptureTitle.autoTitle(ocrText), 0.9f)
@@ -54,12 +66,21 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
     /** 캡처 내용을 한 문장으로 요약(온디바이스). 지원·성공 시에만 값, 그 외 null. */
     override suspend fun summarize(text: String): String? {
         if (text.isBlank()) return null
-        if (runCatching { model.checkStatus() }.getOrNull() != FeatureStatus.AVAILABLE) return null
-        val response = runCatching { model.generateContent(buildSummaryPrompt(text)) }.getOrNull() ?: return null
+        val status = runCatching { model.checkStatus() }.getOrNull()
+        if (status != FeatureStatus.AVAILABLE) {
+            NanoLog.d("classifier", "sum_status_fail", "status=$status")
+            return null
+        }
+        val response = runCatching { model.generateContent(buildSummaryPrompt(text)) }.getOrNull()
+        if (response == null) {
+            NanoLog.d("classifier", "sum_gen_fail", "textLen=${text.length}")
+            return null
+        }
         val answer = response.candidates.firstOrNull()?.text
             ?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotBlank() }
             ?.removePrefix("요약:")?.trim()
             ?.trim('"', '\'', '「', '」', '“', '”')
+        if (answer.isNullOrBlank()) NanoLog.d("classifier", "sum_empty")
         return answer?.takeIf { it.isNotBlank() }?.take(60)
     }
 
@@ -84,7 +105,11 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
     private fun ensureDownload() {
         if (downloadStarted) return
         downloadStarted = true
-        scope.launch { runCatching { model.download().collect {} } }
+        scope.launch {
+            runCatching { model.download().collect {} }
+                .onSuccess { NanoLog.d("classifier", "dl_ok") }
+                .onFailure { NanoLog.d("classifier", "dl_fail") }
+        }
     }
 
     private fun buildPrompt(ocrText: String, categories: List<Category>): String {

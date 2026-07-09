@@ -2,8 +2,11 @@ package com.example.petling.ui.voice
 
 import android.Manifest
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.speech.RecognitionListener
+import android.speech.RecognitionSupport
+import android.speech.RecognitionSupportCallback
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -72,12 +75,18 @@ fun VoiceScreen(
     // 마이크 권한이 영구 거부(다시 묻지 않음)된 경우 → 재요청 대신 앱 설정으로 안내(무한 루프 방지)
     var micPermanentlyDenied by remember { mutableStateOf(false) }
 
-    val recognizer = remember {
-        if (SpeechRecognizer.isRecognitionAvailable(context)) {
-            SpeechRecognizer.createSpeechRecognizer(context)
-        } else {
-            null
-        }
+    // 온디바이스 인식기 우선(minSdk 31이라 게이트 불요), 미지원이면 기존 인식기 + PREFER_OFFLINE
+    var usingOnDevice by remember { mutableStateOf(SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) }
+    var recognizer by remember {
+        mutableStateOf(
+            when {
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(context) ->
+                    SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+                SpeechRecognizer.isRecognitionAvailable(context) ->
+                    SpeechRecognizer.createSpeechRecognizer(context)
+                else -> null
+            },
+        )
     }
 
     val intent = remember {
@@ -97,6 +106,17 @@ fun VoiceScreen(
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
             override fun onError(error: Int) {
+                // 온디바이스 모델에 한국어가 없으면 네트워크 인식기로 1회 폴백
+                val languageUnavailable = Build.VERSION.SDK_INT >= 33 &&
+                    (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED ||
+                        error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)
+                if (languageUnavailable && usingOnDevice && SpeechRecognizer.isRecognitionAvailable(context)) {
+                    usingOnDevice = false
+                    recognizer?.destroy()
+                    recognizer = SpeechRecognizer.createSpeechRecognizer(context)
+                    startListening()
+                    return
+                }
                 vm.onError("음성을 인식하지 못했어요. 다시 시도해주세요.")
             }
             override fun onResults(results: Bundle?) {
@@ -107,6 +127,26 @@ fun VoiceScreen(
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
         recognizer?.startListening(intent)
+    }
+
+    // API 33+: 온디바이스 모델에 한국어가 없고 설치 가능하면 다운로드를 미리 걸어둔다(비차단)
+    fun ensureOnDeviceModel() {
+        if (Build.VERSION.SDK_INT < 33 || !usingOnDevice) return
+        recognizer?.checkRecognitionSupport(
+            intent,
+            context.mainExecutor,
+            object : RecognitionSupportCallback {
+                override fun onSupportResult(recognitionSupport: RecognitionSupport) {
+                    val ko = "ko-KR"
+                    val installed = recognitionSupport.installedOnDeviceLanguages
+                    val supported = recognitionSupport.supportedOnDeviceLanguages
+                    if (ko !in installed && ko in supported) {
+                        recognizer?.triggerModelDownload(intent)
+                    }
+                }
+                override fun onError(error: Int) {}
+            },
+        )
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -133,6 +173,7 @@ fun VoiceScreen(
         if (recognizer == null) {
             vm.onError("이 기기에서는 음성 인식을 사용할 수 없어요.")
         } else {
+            ensureOnDeviceModel()
             permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }

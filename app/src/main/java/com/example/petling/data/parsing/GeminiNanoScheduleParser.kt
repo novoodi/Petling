@@ -1,5 +1,6 @@
 package com.example.petling.data.parsing
 
+import com.example.petling.data.capture.NanoLog
 import com.example.petling.domain.AppClock
 import com.example.petling.domain.model.ParsedDraftSeed
 import com.example.petling.domain.model.ScheduleSource
@@ -35,12 +36,25 @@ class GeminiNanoScheduleParser(
     override suspend fun parse(rawText: String): List<ParsedDraftSeed> {
         if (rawText.isBlank()) return emptyList()
         // Nano가 준비된 기기에서만 시도. 그 외에는 규칙 파서로 폴백.
-        if (runCatching { model.checkStatus() }.getOrNull() != FeatureStatus.AVAILABLE) return emptyList()
+        val status = runCatching { model.checkStatus() }.getOrNull()
+        if (status != FeatureStatus.AVAILABLE) {
+            NanoLog.d("parser", "status_fail", "status=$status")
+            return emptyList()
+        }
 
         val response = runCatching { model.generateContent(buildPrompt(rawText, clock.today())) }.getOrNull()
-            ?: return emptyList()
+        if (response == null) {
+            NanoLog.d("parser", "gen_fail", "textLen=${rawText.length}")
+            return emptyList()
+        }
         val answer = response.candidates.firstOrNull()?.text.orEmpty()
-        return parseDrafts(answer).mapNotNull { it.toSeed(source) }
+        val seeds = parseDrafts(answer).mapNotNull { it.toSeed(source) }
+        if (seeds.isEmpty()) {
+            NanoLog.d("parser", "empty", "answerLen=${answer.length}")
+        } else {
+            NanoLog.d("parser", "ok", "seeds=${seeds.size} textLen=${rawText.length}")
+        }
+        return seeds
     }
 
     private fun buildPrompt(rawText: String, today: LocalDate): String {
@@ -61,11 +75,17 @@ class GeminiNanoScheduleParser(
     private fun parseDrafts(answer: String): List<ParsedScheduleDraft> {
         val start = answer.indexOf('[')
         val end = answer.lastIndexOf(']')
-        if (start < 0 || end <= start) return emptyList()
+        if (start < 0 || end <= start) {
+            NanoLog.d("parser", "json_fail", "no_array answerLen=${answer.length}")
+            return emptyList()
+        }
         val jsonStr = answer.substring(start, end + 1)
         return runCatching {
             json.decodeFromString(ListSerializer(ParsedScheduleDraft.serializer()), jsonStr)
-        }.getOrDefault(emptyList())
+        }.getOrElse {
+            NanoLog.d("parser", "json_fail", "decode answerLen=${answer.length}")
+            emptyList()
+        }
     }
 }
 
