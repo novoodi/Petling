@@ -12,7 +12,9 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -87,6 +89,7 @@ class YardState {
     var behavior by mutableStateOf(YardBehavior.PAUSE)
     var facingLeft by mutableStateOf(false)
     var dragging by mutableStateOf(false)
+    var frozen by mutableStateOf(false) // 타이핑(IME) 중 이동 정지
     var spritePx by mutableFloatStateOf(0f)
     var snackX by mutableStateOf<Float?>(null) // 바닥 간식 중심 x(px). null=없음
     val events = Channel<YardEvent>(Channel.CONFLATED)
@@ -120,6 +123,7 @@ private class YardDims(
     val jumpPx: Float,
     val dp1: Float, // 1dp의 px
     val groundTopY: Float, // 지면선의 스프라이트-top y(오버레이 하단 기준)
+    val spritePx: Float,
 ) {
     fun speed(style: WalkStyle, mood: Mood): Float {
         val mul = when (mood) {
@@ -184,6 +188,10 @@ fun RoamingYard(
         label = "wobbleV",
     )
 
+    // 타이핑 중(키보드 표시)엔 캐릭터가 이동을 멈추고 대기.
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    androidx.compose.runtime.LaunchedEffect(imeBottom > 0) { state.frozen = imeBottom > 0 }
+
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
     ) {
@@ -200,6 +208,7 @@ fun RoamingYard(
             jumpPx = 12f * dp1,
             dp1 = dp1,
             groundTopY = groundTopY,
+            spritePx = spritePx,
         )
         state.spritePx = spritePx
 
@@ -228,37 +237,43 @@ fun RoamingYard(
                         scaleX = scaleX * (1f + sq * 0.10f)
                     }
                     transformOrigin = TransformOrigin(0.5f, 0.9f)
-                }
-                .pointerInput(state) {
-                    detectTapGestures {
-                        if (!state.dragging) state.events.trySend(YardEvent.Tap)
-                    }
-                }
-                .pointerInput(state, rangePx, dims.yMinPx) {
-                    detectDragGestures(
-                        onDragStart = {
-                            state.dragging = true
-                            state.behavior = YardBehavior.DRAG
-                        },
-                        onDragEnd = {
-                            state.dragging = false
-                            state.events.trySend(YardEvent.Drop)
-                        },
-                        onDragCancel = {
-                            state.dragging = false
-                            state.events.trySend(YardEvent.Drop)
-                        },
-                        onDrag = { change, delta ->
-                            change.consume()
-                            scope.launch {
-                                state.x.snapTo((state.x.value + delta.x).coerceIn(0f, rangePx))
-                                state.y.snapTo((state.y.value + delta.y).coerceIn(dims.yMinPx, 0f))
-                            }
-                        },
-                    )
                 },
         ) {
             renderer.Render(spec, Modifier.fillMaxSize())
+            // 히트박스는 중앙 90dp로 축소 — 140dp 전체가 FAB/카드 탭을 가로채지 않게.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(90.dp)
+                    .pointerInput(state) {
+                        detectTapGestures {
+                            if (!state.dragging) state.events.trySend(YardEvent.Tap)
+                        }
+                    }
+                    .pointerInput(state, rangePx, dims.yMinPx) {
+                        detectDragGestures(
+                            onDragStart = {
+                                state.dragging = true
+                                state.behavior = YardBehavior.DRAG
+                            },
+                            onDragEnd = {
+                                state.dragging = false
+                                state.events.trySend(YardEvent.Drop)
+                            },
+                            onDragCancel = {
+                                state.dragging = false
+                                state.events.trySend(YardEvent.Drop)
+                            },
+                            onDrag = { change, delta ->
+                                change.consume()
+                                scope.launch {
+                                    state.x.snapTo((state.x.value + delta.x).coerceIn(0f, rangePx))
+                                    state.y.snapTo((state.y.value + delta.y).coerceIn(dims.yMinPx, 0f))
+                                }
+                            },
+                        )
+                    },
+            )
         }
 
         // 바닥 간식(도토리 쿠키) — 스프라이트와 형제라 반전 영향 없음
@@ -317,8 +332,8 @@ private suspend fun roamLoop(
     var pending: YardEvent? = null
     var lastBehavior = YardBehavior.PAUSE
     while (coroutineContext.isActive) {
-        if (state.dragging) {
-            snapshotFlow { state.dragging }.first { !it }
+        if (state.dragging || state.frozen) {
+            snapshotFlow { state.dragging || state.frozen }.first { !it }
             continue
         }
         val ev = pending ?: state.events.tryReceive().getOrNull()
@@ -426,9 +441,15 @@ private fun pickPerch(
     else -> cand.random()
 }
 
-/** perch가 오버레이 콘텐츠 영역 안에 온전히 보이는지. */
+/**
+ * perch가 착지 가능한지: 화면 콘텐츠 안 + 금지구역(상단 검색바·하단 네비바/FAB) 회피.
+ * opt-in(미부착)이 1차 방어, 이 필터는 스크롤로 금지 존에 들어온 perch를 배제하는 2차 방어.
+ */
 private fun inViewport(rect: androidx.compose.ui.geometry.Rect, dims: YardDims): Boolean =
-    rect.width > 0f && rect.top >= 0f && rect.top <= dims.groundTopY
+    rect.width > 0f &&
+        rect.top >= 8f * dims.dp1 &&                          // 상단 여유
+        rect.bottom <= dims.groundTopY + dims.spritePx &&     // 콘텐츠 하단(네비바 위)
+        rect.top <= dims.groundTopY - 24f * dims.dp1          // 하단바·FAB 여유
 
 /** perch 상단에 발을 맞춘 스프라이트-top y(root px). 발=박스 하단이 카드 상단에 살짝 얹히게. */
 private fun perchBaseY(rect: androidx.compose.ui.geometry.Rect, spritePx: Float, dims: YardDims): Float =
