@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -32,6 +33,7 @@ class CanvasCharacterRenderer : CharacterRenderer {
     @Composable
     override fun Render(spec: CharacterSpec, modifier: Modifier) {
         val palette = ModoriPalette.from(spec.colorHue, spec.species)
+        val traits = remember(spec.seed) { IndividualTraits.from(spec.seed) }
         val transition = rememberInfiniteTransition(label = "creature")
 
         // 숨쉬기(위아래 부유 + 몸 팽창)
@@ -261,6 +263,7 @@ class CanvasCharacterRenderer : CharacterRenderer {
                             eyeStyle = spec.eyeStyle,
                             blink = eyeBlink,
                             motion = motion,
+                            traits = traits,
                         )
                     }
                 }

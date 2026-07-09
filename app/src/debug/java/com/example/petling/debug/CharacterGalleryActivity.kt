@@ -31,6 +31,7 @@ import com.example.petling.domain.model.GrowthStage
 import com.example.petling.domain.model.Mood
 import com.example.petling.domain.model.Species
 import com.example.petling.ui.character.CreatureMotion
+import com.example.petling.ui.character.IndividualTraits
 import com.example.petling.ui.character.ModoriPalette
 import com.example.petling.ui.character.drawCreature
 import com.example.petling.ui.character.hopPose
@@ -92,6 +93,24 @@ private fun Gallery() {
         ) {
             Species.entries.forEach { sp ->
                 SilhouetteCellLabeled(sp.displayName, sp, GrowthStage.MATURE)
+            }
+        }
+
+        Header("개체 변이 (동일 종·성숙기 — seed별 미세차, 코트·실루엣 동일)")
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            listOf(0L, 11L, 202L, 3003L, 40004L, 500005L).forEach { seed ->
+                SeedCellLabeled(if (seed == 0L) "중립" else "seed $seed", Species.HAMSTER, seed)
+            }
+        }
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            listOf(0L, 11L, 202L, 3003L, 40004L, 500005L).forEach { seed ->
+                SeedCellLabeled(if (seed == 0L) "중립" else "seed $seed", Species.FOX, seed)
             }
         }
 
@@ -194,6 +213,21 @@ private fun CellLabeled(
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Cell(sp, st, br, mood, ex, hue, eye, dp)
+        Text(label, fontSize = 10.sp)
+    }
+}
+
+/** seed별 개체 변이 셀 — 크기·볼·꼬리 미세차. 코트 색·실루엣 아키타입은 동일해야 한다. */
+@Composable
+private fun SeedCellLabeled(label: String, sp: Species, seed: Long, dp: Int = 108) {
+    val palette = ModoriPalette.from(sp.defaultHue, sp)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Canvas(modifier = Modifier.size(dp.dp).background(Color(0xFFFBF9F4))) {
+            drawCreature(
+                sp, GrowthStage.MATURE, null, Mood.CALM, Expression.NEUTRAL, palette, 0, blink = 0f,
+                traits = IndividualTraits.from(seed),
+            )
+        }
         Text(label, fontSize = 10.sp)
     }
 }
