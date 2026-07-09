@@ -47,6 +47,7 @@ import com.example.petling.ui.appContainer
 import com.example.petling.ui.components.CategoryBadge
 import com.example.petling.ui.components.PetlingCard
 import com.example.petling.ui.components.timeLabel
+import com.example.petling.ui.overlay.perch
 import com.example.petling.ui.theme.Brand500
 import com.example.petling.ui.theme.Dimens
 import com.example.petling.ui.theme.TextTertiary
@@ -208,6 +209,7 @@ private fun DayCell(
             .clip(CircleShape)
             .then(if (isSelected) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier)
             .then(if (isToday && !isSelected) Modifier.border(1.dp, Brand500, CircleShape) else Modifier)
+            .then(if (isToday) Modifier.perch("cal-today") else Modifier) // 오늘 셀에만 착지 자리
             .clickable(onClick = onClick),
         verticalArrangement = Arrangement.Center,
     ) {

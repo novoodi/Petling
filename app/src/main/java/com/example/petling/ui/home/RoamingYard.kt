@@ -130,8 +130,8 @@ private class YardDims(
 
 /** 렌더 스펙: 행동·컨텍스트별 애니메이션/표정/기분 오버라이드(저장 안 함). */
 private fun specFor(base: CharacterSpec, behavior: YardBehavior, ctx: YardContext): CharacterSpec = when (behavior) {
-    YardBehavior.PAUSE, YardBehavior.GREET -> base
-    YardBehavior.WALK -> base.copy(animation = CharacterAnimation.WALK)
+    YardBehavior.PAUSE, YardBehavior.GREET, YardBehavior.SIT -> base
+    YardBehavior.WALK, YardBehavior.WALK_TO_PERCH -> base.copy(animation = CharacterAnimation.WALK)
     YardBehavior.HOP, YardBehavior.CELEBRATE -> base.copy(
         animation = CharacterAnimation.BOUNCE,
         mood = Mood.HAPPY,
@@ -152,7 +152,7 @@ private fun specFor(base: CharacterSpec, behavior: YardBehavior, ctx: YardContex
         ReactStyle.STARTLE_DASH, ReactStyle.STARTLE_HIDE -> base.copy(expression = Expression.WORRIED)
         else -> base.copy(mood = Mood.HAPPY, expression = Expression.EXCITED)
     }
-    YardBehavior.DRAG, YardBehavior.FALL -> base.copy(expression = Expression.WORRIED)
+    YardBehavior.DRAG, YardBehavior.FALL, YardBehavior.DISMOUNT -> base.copy(expression = Expression.WORRIED)
     YardBehavior.PEEK -> base.copy(expression = Expression.NEUTRAL)
     YardBehavior.GROOM -> base.copy(animation = CharacterAnimation.GROOM, expression = Expression.NEUTRAL)
     YardBehavior.PECK -> base.copy(animation = CharacterAnimation.PECK)
@@ -165,6 +165,7 @@ fun RoamingYard(
     affection: Int,
     state: YardState,
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
+    perchRegistry: com.example.petling.ui.overlay.PerchRegistry? = null,
     modifier: Modifier = Modifier,
 ) {
     val renderer = LocalCharacterRenderer.current
@@ -203,7 +204,7 @@ fun RoamingYard(
             state.x.updateBounds(-dims.hidePx, rangePx + dims.hidePx)
             if (state.x.value !in 0f..rangePx) state.x.snapTo(rangePx / 2f)
             state.baseY.snapTo(groundTopY) // 지면선에 발판 고정
-            roamLoop(state, dims, ctxProvider)
+            roamLoop(state, dims, ctxProvider, perchRegistry)
         }
 
         val ctx = ctxProvider.value
@@ -306,6 +307,7 @@ private suspend fun roamLoop(
     state: YardState,
     dims: YardDims,
     ctxProvider: State<YardContext>,
+    registry: com.example.petling.ui.overlay.PerchRegistry?,
 ) {
     var pending: YardEvent? = null
     var lastBehavior = YardBehavior.PAUSE
@@ -317,27 +319,38 @@ private suspend fun roamLoop(
         val ev = pending ?: state.events.tryReceive().getOrNull()
         pending = null
         val ctx = ctxProvider.value
-        val behavior = when (ev) {
-            is YardEvent.Drop -> YardBehavior.FALL
-            is YardEvent.Tap -> YardBehavior.REACT
-            is YardEvent.Celebrate -> YardBehavior.CELEBRATE
-            is YardEvent.Greet -> YardBehavior.GREET
-            is YardEvent.Snack -> YardBehavior.EAT
-            null -> weightedPick(idleWeights(ctx.species, lastBehavior, ctx.mood))
-        }
+        // 이벤트가 없는 idle 차례엔 확률적으로 근처 perch로 이동해 앉는다(성격 편향은 커밋3).
+        val perchId = if (ev == null) choosePerch(registry, state, dims, lastBehavior) else null
+        var chosen = YardBehavior.PAUSE
         val interrupt = raceEvents(state) {
-            setBehavior(state, behavior)
-            try {
-                execute(state, behavior, ev, ctx, dims)
-            } finally {
-                if (behavior == YardBehavior.EAT) state.snackX = null
+            if (perchId != null) {
+                chosen = YardBehavior.SIT
+                executePerchVisit(state, dims, ctxProvider, perchId, registry!!)
+            } else {
+                val behavior = when (ev) {
+                    is YardEvent.Drop -> YardBehavior.FALL
+                    is YardEvent.Tap -> YardBehavior.REACT
+                    is YardEvent.Celebrate -> YardBehavior.CELEBRATE
+                    is YardEvent.Greet -> YardBehavior.GREET
+                    is YardEvent.Snack -> YardBehavior.EAT
+                    null -> weightedPick(idleWeights(ctx.species, lastBehavior, ctx.mood))
+                }
+                chosen = behavior
+                setBehavior(state, behavior)
+                try {
+                    execute(state, behavior, ev, ctx, dims)
+                } finally {
+                    if (behavior == YardBehavior.EAT) state.snackX = null
+                }
             }
         }
-        // 전환 스쿼시 중 선점되면 눌린 채로 남지 않게 복원
+        // 전환 스쿼시 중 선점되면 눌린 채로 남지 않게 복원. perch에서 선점되면 바닥으로 복귀.
         if (state.turn.value != 1f) state.turn.snapTo(1f)
-        if (state.rotation.value != 0f && behavior != YardBehavior.WALK) state.rotation.snapTo(0f)
+        if (state.rotation.value != 0f && chosen != YardBehavior.WALK) state.rotation.snapTo(0f)
+        if (state.baseY.value != dims.groundTopY) state.baseY.snapTo(dims.groundTopY)
+        if (state.y.value != 0f) state.y.snapTo(0f)
         pending = interrupt
-        lastBehavior = behavior
+        lastBehavior = chosen
     }
 }
 
@@ -373,6 +386,87 @@ private fun weightedPick(weights: List<Pair<YardBehavior, Int>>): YardBehavior {
         r -= w
     }
     return weights.first().first
+}
+
+// ─────────────────────────── perch(착지) ───────────────────────────
+
+/** idle 차례에 근처 perch로 갈지 결정. 커밋2는 단순 확률; 성격 편향은 커밋3. */
+private fun choosePerch(
+    registry: com.example.petling.ui.overlay.PerchRegistry?,
+    state: YardState,
+    dims: YardDims,
+    last: YardBehavior,
+): String? {
+    if (registry == null || last == YardBehavior.SIT) return null // 방금 앉았다 내려왔으면 잠시 배회
+    val cand = registry.candidates().filter { inViewport(it.rect, dims) }
+    if (cand.isEmpty() || Random.nextFloat() >= 0.35f) return null
+    return cand.random().id
+}
+
+/** perch가 오버레이 콘텐츠 영역 안에 온전히 보이는지. */
+private fun inViewport(rect: androidx.compose.ui.geometry.Rect, dims: YardDims): Boolean =
+    rect.width > 0f && rect.top >= 0f && rect.top <= dims.groundTopY
+
+/** perch 상단에 발을 맞춘 스프라이트-top y(root px). 발=박스 하단이 카드 상단에 살짝 얹히게. */
+private fun perchBaseY(rect: androidx.compose.ui.geometry.Rect, spritePx: Float, dims: YardDims): Float =
+    rect.top - spritePx + 8f * dims.dp1
+
+/** perch 방문: 걸어가 → 등반 홉 → 착지 → 추적/체류 → 뛰어내림. */
+private suspend fun executePerchVisit(
+    state: YardState,
+    dims: YardDims,
+    ctxProvider: State<YardContext>,
+    perchId: String,
+    registry: com.example.petling.ui.overlay.PerchRegistry,
+) {
+    val ctx = ctxProvider.value
+    val t = temperamentFor(ctx.species)
+    // 1) 지면에서 perch 아래로 걸어가기
+    val rect0 = registry.rectOf(perchId) ?: return
+    setBehavior(state, YardBehavior.WALK_TO_PERCH)
+    val targetX = (rect0.center.x - state.spritePx / 2f).coerceIn(0f, dims.rangePx)
+    walkTo(state, targetX, dims.speed(t.walkStyle, ctx.mood), t.walkStyle, dims)
+    // 2) 등반 홉 (걷는 사이 사라졌으면 취소)
+    val rect = registry.rectOf(perchId) ?: return
+    setBehavior(state, YardBehavior.SIT)
+    coroutineScope {
+        launch {
+            state.y.animateTo(-dims.jumpPx * 1.2f, tween(180, easing = Motion.Decelerate))
+            state.y.animateTo(0f, tween(160, easing = Motion.Bounce))
+        }
+        state.baseY.animateTo(perchBaseY(rect, state.spritePx, dims), tween(320, easing = Motion.Decelerate))
+    }
+    land(state)
+    // 3) 스크롤 추적 + 체류
+    followPerch(state, dims, registry, perchId)
+    // 4) 바닥으로 뛰어내림
+    dismount(state, dims)
+}
+
+/** perch를 따라 x/baseY를 갱신하며 체류. 소멸/화면이탈 시 조기 종료. */
+private suspend fun followPerch(
+    state: YardState,
+    dims: YardDims,
+    registry: com.example.petling.ui.overlay.PerchRegistry,
+    perchId: String,
+) {
+    val start = System.currentTimeMillis()
+    val dwellMs = 6000L // 성격 편향(체류 시간)은 커밋3
+    while (coroutineContext.isActive) {
+        val rect = registry.rectOf(perchId) ?: return
+        if (!inViewport(rect, dims)) return
+        state.x.snapTo(rect.center.x - state.spritePx / 2f)
+        state.baseY.snapTo(perchBaseY(rect, state.spritePx, dims))
+        if (System.currentTimeMillis() - start > dwellMs) return
+        delay(32)
+    }
+}
+
+/** perch에서 바닥으로 뛰어내려 배회 복귀. */
+private suspend fun dismount(state: YardState, dims: YardDims) {
+    setBehavior(state, YardBehavior.DISMOUNT)
+    state.baseY.animateTo(dims.groundTopY, tween(340, easing = Motion.Decelerate))
+    land(state)
 }
 
 // ─────────────────────────── 행동 실행 ───────────────────────────
@@ -444,6 +538,8 @@ private suspend fun execute(
         }
         YardBehavior.EAT -> executeEat(state, ev as? YardEvent.Snack, ctx, dims)
         YardBehavior.DRAG -> snapshotFlow { state.dragging }.first { !it }
+        // perch 행동은 executePerchVisit에서 직접 구동 — 일반 execute 경로엔 오지 않는다.
+        YardBehavior.WALK_TO_PERCH, YardBehavior.SIT, YardBehavior.DISMOUNT -> Unit
     }
 }
 
