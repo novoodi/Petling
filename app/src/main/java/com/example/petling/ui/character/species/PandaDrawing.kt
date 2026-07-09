@@ -43,9 +43,10 @@ internal fun DrawScope.drawPanda(
         outlinedOval(p, d, cx + s * prop.bodyRx * 0.62f, bot - 0.012f, 0.075f, 0.048f, black, palette.outline, OUT_W_S)
     }
 
-    // 묵직한 흰 몸통
-    outlinedOval(
-        p, d, cx, prop.bodyCy, prop.bodyRx * 1.08f, prop.bodyRy * 0.98f * breathe,
+    // 묵직한 반원(산 모양) 흰 몸통
+    val bodyRy = prop.bodyRy * 0.98f * breathe
+    drawDomeBody(
+        p, d, prop.bodyCy - bodyRy, prop.bodyCy + bodyRy, prop.bodyRx * 1.16f,
         vGrad(p, cx, prop.bodyCy, prop.bodyRy, palette.bodyHighlight, palette.body), palette.outline,
     )
 

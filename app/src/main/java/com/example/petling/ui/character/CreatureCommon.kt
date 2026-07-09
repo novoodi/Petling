@@ -202,6 +202,109 @@ internal fun DrawScope.drawEggBody(
 
 private fun lerpF(a: Float, b: Float, t: Float): Float = a + (b - a) * t
 
+// ─────────────────────────── 체형 아키타입 뼈대 ───────────────────────────
+
+/**
+ * 아래로 무게중심이 쏠린 블롭 실루엣 경로(scratchPath 재사용).
+ * [wideBiasDown]=최광폭이 중앙에서 바닥 쪽으로 쏠린 정도(0..1),
+ * [topNarrow]=상단 폭 비율(작을수록 어깨가 좁아 뾰족).
+ */
+private fun blobPath(
+    p: (Float, Float) -> Offset,
+    cx: Float, top: Float, bot: Float, halfW: Float,
+    wideBiasDown: Float, topNarrow: Float,
+): Path {
+    val h = bot - top
+    val wy = top + h * (0.5f + 0.5f * wideBiasDown) // 최광폭 y(바닥 쪽 쏠림)
+    val tw = halfW * topNarrow
+    val lx = cx - halfW
+    val rx = cx + halfW
+    val path = scratchPath()
+    path.moveTo(p(lx, wy).x, p(lx, wy).y)
+    path.cubicTo(
+        p(lx, wy - (wy - top) * 0.72f).x, p(lx, wy - (wy - top) * 0.72f).y,
+        p(cx - tw, top).x, p(cx - tw, top).y,
+        p(cx, top).x, p(cx, top).y,
+    )
+    path.cubicTo(
+        p(cx + tw, top).x, p(cx + tw, top).y,
+        p(rx, wy - (wy - top) * 0.72f).x, p(rx, wy - (wy - top) * 0.72f).y,
+        p(rx, wy).x, p(rx, wy).y,
+    )
+    path.cubicTo(
+        p(rx, wy + (bot - wy) * 0.62f).x, p(rx, wy + (bot - wy) * 0.62f).y,
+        p(cx + halfW * 0.48f, bot).x, p(cx + halfW * 0.48f, bot).y,
+        p(cx, bot).x, p(cx, bot).y,
+    )
+    path.cubicTo(
+        p(cx - halfW * 0.48f, bot).x, p(cx - halfW * 0.48f, bot).y,
+        p(lx, wy + (bot - wy) * 0.62f).x, p(lx, wy + (bot - wy) * 0.62f).y,
+        p(lx, wy).x, p(lx, wy).y,
+    )
+    path.close()
+    return path
+}
+
+/**
+ * 웅크린 공 몸통(햄스터): 가로가 세로보다 넓은 땅딸보, 최광폭이 하단 1/3.
+ * [cheekBulge]는 개체 변이(4단계)에서 볼·몸통 부피를 미세 조정하는 주입 지점.
+ */
+internal fun DrawScope.drawCrouchedBallBody(
+    p: (Float, Float) -> Offset, d: (Float) -> Float,
+    top: Float, bot: Float, halfW: Float,
+    brush: Brush, outline: Color, cheekBulge: Float = 1f,
+) {
+    val path = blobPath(p, 0.5f, top, bot, halfW * cheekBulge, wideBiasDown = 0.30f, topNarrow = 0.62f)
+    outlinedPath(d, path, brush, outline)
+}
+
+/**
+ * 엉덩이 뭉치 몸통(토끼): 작은 상체 + 옆으로 불룩한 큰 힙(하단이 넓고 어깨가 좁다).
+ * [haunchMul]은 개체 변이에서 힙 부피 조정용.
+ */
+internal fun DrawScope.drawHaunchBody(
+    p: (Float, Float) -> Offset, d: (Float) -> Float,
+    top: Float, bot: Float, halfW: Float,
+    brush: Brush, outline: Color, haunchMul: Float = 1f,
+) {
+    val path = blobPath(p, 0.5f, top, bot, halfW * haunchMul, wideBiasDown = 0.42f, topNarrow = 0.46f)
+    outlinedPath(d, path, brush, outline)
+}
+
+/**
+ * 묵직한 반원 몸통(판다): 넓고 살짝 둥근 바닥 + 큰 상단 아치.
+ * 어깨·엉덩이 구분 없는 "산 모양" — 가장 부피감 있는 실루엣.
+ */
+internal fun DrawScope.drawDomeBody(
+    p: (Float, Float) -> Offset, d: (Float) -> Float,
+    top: Float, bot: Float, halfW: Float,
+    brush: Brush, outline: Color,
+) {
+    val cx = 0.5f
+    val h = bot - top
+    val path = scratchPath()
+    val bl = p(cx - halfW, bot)
+    path.moveTo(bl.x, bl.y)
+    path.cubicTo(
+        p(cx - halfW, top + h * 0.28f).x, p(cx - halfW, top + h * 0.28f).y,
+        p(cx - halfW * 0.46f, top).x, p(cx - halfW * 0.46f, top).y,
+        p(cx, top).x, p(cx, top).y,
+    )
+    path.cubicTo(
+        p(cx + halfW * 0.46f, top).x, p(cx + halfW * 0.46f, top).y,
+        p(cx + halfW, top + h * 0.28f).x, p(cx + halfW, top + h * 0.28f).y,
+        p(cx + halfW, bot).x, p(cx + halfW, bot).y,
+    )
+    // 살짝 둥근 바닥
+    path.cubicTo(
+        p(cx + halfW * 0.5f, bot + h * 0.06f).x, p(cx + halfW * 0.5f, bot + h * 0.06f).y,
+        p(cx - halfW * 0.5f, bot + h * 0.06f).x, p(cx - halfW * 0.5f, bot + h * 0.06f).y,
+        bl.x, bl.y,
+    )
+    path.close()
+    outlinedPath(d, path, brush, outline)
+}
+
 // ─────────────────────────── 귀·꼬리 ───────────────────────────
 
 /** 삼각 귀 하나(끝 색/속귀 색 + 아웃라인). pose로 처짐·젖힘·쫑긋을 반영. */

@@ -31,9 +31,10 @@ internal fun DrawScope.drawRabbit(
     drawRabbitEar(p, d, palette, prop, pose, motion, sideSign = -1f, bendDeg = if (baby) -44f else -7f, lenMul = if (baby) 0.78f else 1f)
     drawRabbitEar(p, d, palette, prop, pose, motion, sideSign = 1f, bendDeg = if (baby) 10f else 40f, lenMul = if (baby) 0.88f else 0.94f)
 
-    // 둥근 몸통(볼 형태) + 흰 배
-    outlinedOval(p, d, cx, prop.bodyCy, prop.bodyRx * 1.02f, prop.bodyRy * 0.94f, vGrad(p, cx, prop.bodyCy, prop.bodyRy, palette.bodyHighlight, palette.body), palette.outline)
-    drawCircle(palette.belly, radius = d(prop.bodyRx * 0.55f), center = p(cx, prop.bodyCy + prop.bodyRy * 0.22f))
+    // 엉덩이 뭉치 몸통(작은 상체 + 큰 힙) + 흰 배
+    val bodyRy = prop.bodyRy * 0.94f
+    drawHaunchBody(p, d, prop.bodyCy - bodyRy, prop.bodyCy + bodyRy, prop.bodyRx * 1.12f, vGrad(p, cx, prop.bodyCy, prop.bodyRy, palette.bodyHighlight, palette.body), palette.outline)
+    drawCircle(palette.belly, radius = d(prop.bodyRx * 0.55f), center = p(cx, prop.bodyCy + prop.bodyRy * 0.24f))
 
     // 큰 뒷발(앞으로 뻗음, 성장할수록 커짐)
     val fr = 0.042f + prop.fluff * 0.028f

@@ -67,14 +67,14 @@ fun proportionsFor(species: Species, stage: GrowthStage): Proportions {
     val (tailLen, tailThick) = tailSpec(species, i)
     val bodyRxMul = when (species) {
         Species.CHICK, Species.PENGUIN -> 0.92f
-        Species.HAMSTER -> 1.10f
-        Species.PANDA -> 1.12f
+        Species.HAMSTER -> 1.18f // 웅크린 공: 가로로 넓게
+        Species.PANDA -> 1.20f   // 묵직한 반원
         else -> 1f
     }
     val bodyRyMul = when (species) {
         Species.CHICK, Species.PENGUIN -> 1.05f
-        Species.HAMSTER -> 0.98f
-        Species.PANDA -> 1.05f
+        Species.HAMSTER -> 0.82f // 웅크린 공: 세로로 낮게(가로>세로)
+        Species.PANDA -> 0.96f
         else -> 1f
     }
     return Proportions(
@@ -96,6 +96,30 @@ fun proportionsFor(species: Species, stage: GrowthStage): Proportions {
         eyeGap = 0.52f,
         fluff = FLUFF[i],
     )
+}
+
+// ─────────────────────────── 체형 아키타입 ───────────────────────────
+
+/**
+ * 체형 아키타입. 단색 실루엣만으로 종을 구분하기 위한 분류(문서화·갤러리 그룹핑·회귀 기준).
+ * 실제 몸통 드로잉은 종별 파일이 해당 뼈대 헬퍼([drawEggBody]/[drawSittingBody]/
+ * [drawCrouchedBallBody]/[drawDomeBody]/[drawHaunchBody])를 골라 조립한다.
+ */
+enum class BodyPlan {
+    UPRIGHT_TEARDROP, // 직립 오뚝이(병아리·펭귄) — 물방울
+    CROUCHED_BALL,    // 웅크린 공(햄스터) — 가로>세로
+    SEATED_QUADRUPED, // 앉은 4족(여우·고양이·강아지) — 서양배
+    HEAVY_DOME,       // 묵직한 반원(판다) — 산 모양
+    HAUNCHED,         // 엉덩이 뭉치(토끼) — 작은 상체+큰 힙
+}
+
+fun bodyPlanFor(species: Species): BodyPlan = when (species) {
+    Species.CHICK, Species.PENGUIN -> BodyPlan.UPRIGHT_TEARDROP
+    Species.HAMSTER -> BodyPlan.CROUCHED_BALL
+    Species.FOX, Species.CAT, Species.DOG -> BodyPlan.SEATED_QUADRUPED
+    Species.PANDA -> BodyPlan.HEAVY_DOME
+    Species.RABBIT -> BodyPlan.HAUNCHED
+    Species.ACORN -> BodyPlan.UPRIGHT_TEARDROP // 마스코트(견과 커스텀) — 분류상 오뚝이 계열
 }
 
 // ─────────────────────────── 종별 체급(바닥선 기준 크기) ───────────────────────────
