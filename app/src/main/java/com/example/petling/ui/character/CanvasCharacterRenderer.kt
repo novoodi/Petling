@@ -34,22 +34,25 @@ class CanvasCharacterRenderer : CharacterRenderer {
     override fun Render(spec: CharacterSpec, modifier: Modifier) {
         val palette = ModoriPalette.from(spec.colorHue, spec.species)
         val traits = remember(spec.seed) { IndividualTraits.from(spec.seed) }
+        // 성격별 모션 프로파일. 성격은 부화 후 불변이라 사양은 실제로 바뀌지 않는다(remember로 방어).
+        val profile = remember(spec.personality) { PersonalityMotionProfile.motionProfileFor(spec.personality) }
         val transition = rememberInfiniteTransition(label = "creature")
 
         // 숨쉬기(위아래 부유 + 몸 팽창)
         val bob by transition.animateFloat(
             initialValue = -1f, targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(2600), RepeatMode.Reverse),
+            animationSpec = infiniteRepeatable(tween(profile.breatheMs), RepeatMode.Reverse),
             label = "bob",
         )
 
-        // 깜빡임
+        // 깜빡임(주기 끝 무렵 짧게 감았다 뜸). 키 위치는 주기 대비 상대 비율로 재작성.
         val blink by transition.animateFloat(
             initialValue = 0f, targetValue = 0f,
             animationSpec = infiniteRepeatable(
                 animation = keyframes {
-                    durationMillis = 4200
-                    0f at 0; 0f at 3800; 1f at 3950; 0f at 4100
+                    val c = profile.blinkCycleMs
+                    durationMillis = c
+                    0f at 0; 0f at c * 905 / 1000; 1f at c * 940 / 1000; 0f at c * 976 / 1000
                 },
             ),
             label = "blink",
@@ -62,25 +65,29 @@ class CanvasCharacterRenderer : CharacterRenderer {
             label = "sway",
         )
 
-        // 폴짝 더블 홉(0..1 점프 높이)
+        // 폴짝 더블 홉(0..1 점프 높이). 주기 끝 구간에서 튀어오른다.
         val hop by transition.animateFloat(
             initialValue = 0f, targetValue = 0f,
             animationSpec = infiniteRepeatable(
                 animation = keyframes {
-                    durationMillis = 6400
-                    0f at 0; 0f at 4700; 1f at 4880; 0f at 5060; 0.7f at 5220; 0f at 5400; 0f at 6400
+                    val c = profile.idleHopCycleMs
+                    durationMillis = c
+                    0f at 0; 0f at c * 734 / 1000; 1f at c * 762 / 1000
+                    0f at c * 791 / 1000; 0.7f at c * 816 / 1000; 0f at c * 844 / 1000
                 },
             ),
             label = "hop",
         )
 
-        // 착지 먼지(홉 착지 순간 짧게)
+        // 착지 먼지(홉과 같은 주기를 공유해 착지 순간과 동기).
         val dust by transition.animateFloat(
             initialValue = 0f, targetValue = 0f,
             animationSpec = infiniteRepeatable(
                 animation = keyframes {
-                    durationMillis = 6400
-                    0f at 0; 0f at 5050; 1f at 5120; 0.4f at 5320; 0f at 5600; 0f at 6400
+                    val c = profile.idleHopCycleMs
+                    durationMillis = c
+                    0f at 0; 0f at c * 789 / 1000; 1f at c * 800 / 1000
+                    0.4f at c * 831 / 1000; 0f at c * 875 / 1000
                 },
             ),
             label = "dust",
@@ -177,7 +184,8 @@ class CanvasCharacterRenderer : CharacterRenderer {
             var scaleY = 1f
             var tilt = 0f
             var motion = CreatureMotion.STATIC
-            var eyeBlink = blink
+            // 성격 눈꺼풀 바이어스(몽상=나른). sleep/groom은 아래에서 더 크게 덮어쓴다.
+            var eyeBlink = maxOf(blink, profile.lidBias)
 
             if (walking) {
                 // 정면 홉 보행: 정면 유지 + 진행 방향 기울임 + 통통 홉(squash/stretch) + 착지 먼지.
@@ -222,7 +230,7 @@ class CanvasCharacterRenderer : CharacterRenderer {
                 motion = CreatureMotion(breathe = bob, effectPhase = effectPhase, dust = peckPhase * 0.3f)
             } else if (idle) {
                 dy = bob * base * 0.015f
-                tilt = sway * 2.2f
+                tilt = sway * 2.2f * profile.swayDegMul
                 if (hop > 0f) {
                     dy -= hop * base * 0.085f
                     scaleY = 1f + hop * 0.06f

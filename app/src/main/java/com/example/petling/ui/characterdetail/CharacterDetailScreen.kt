@@ -70,7 +70,7 @@ fun CharacterDetailScreen(onBack: () -> Unit = {}) {
             }
             when (tab) {
                 0 -> character?.let { StatusTab(it, renderer) }
-                else -> DiaryTab(snapshots, character?.hatchedAt ?: 0L) { container.characterRepository.specFromSnapshotJson(it) }
+                else -> DiaryTab(snapshots, character?.hatchedAt ?: 0L, character?.personality) { container.characterRepository.specFromSnapshotJson(it) }
             }
         }
     }
@@ -151,6 +151,7 @@ private fun StatLine(label: String, value: String) {
 private fun DiaryTab(
     snapshots: List<GrowthSnapshotEntity>,
     fallbackSeed: Long,
+    fallbackPersonality: com.example.petling.domain.model.Personality?,
     specOf: (String) -> com.example.petling.domain.model.CharacterSpec,
 ) {
     val renderer = LocalCharacterRenderer.current
@@ -169,9 +170,12 @@ private fun DiaryTab(
             PetlingCard(modifier = Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.size(72.dp)) {
-                        // 레거시 스냅샷(seed 없음)은 현재 캐릭터 seed로 폴백해 과거 모습을 현재 개체와 일관되게 보인다.
+                        // 레거시 스냅샷(seed·성격 없음)은 현재 캐릭터 값으로 폴백해 과거 모습을 현재 개체와 일관되게 보인다.
                         val spec = specOf(snap.characterSpecJson).let {
-                            if (it.seed == 0L) it.copy(seed = fallbackSeed) else it
+                            it.copy(
+                                seed = if (it.seed == 0L) fallbackSeed else it.seed,
+                                personality = it.personality ?: fallbackPersonality,
+                            )
                         }
                         renderer.Render(spec, Modifier.size(72.dp))
                     }
