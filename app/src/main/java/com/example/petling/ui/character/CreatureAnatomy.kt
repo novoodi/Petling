@@ -155,7 +155,7 @@ fun bulkFor(species: Species, stage: GrowthStage): Float {
 private data class EarSpec(val len: Float, val w: Float, val fold: Float)
 
 private fun earSpec(species: Species, i: Int): EarSpec = when (species) {
-    Species.FOX -> EarSpec(floatArrayOf(0.15f, 0.14f, 0.135f, 0.13f)[i], 0.12f, 0f)
+    Species.FOX -> EarSpec(floatArrayOf(0.15f, 0.155f, 0.16f, 0.17f)[i], 0.15f, 0f) // 큰 삼각귀(실루엣 시그니처)
     Species.CAT -> EarSpec(floatArrayOf(0.11f, 0.105f, 0.10f, 0.10f)[i], 0.11f, 0f)
     Species.RABBIT -> EarSpec(
         floatArrayOf(0.16f, 0.22f, 0.28f, 0.32f)[i],
@@ -180,7 +180,7 @@ private fun muzzleSpec(species: Species, i: Int): Float = when (species) {
 private data class TailSpec(val len: Float, val thick: Float)
 
 private fun tailSpec(species: Species, i: Int): TailSpec = when (species) {
-    Species.FOX -> TailSpec(floatArrayOf(0.06f, 0.14f, 0.22f, 0.28f)[i], floatArrayOf(0.07f, 0.09f, 0.11f, 0.13f)[i])
+    Species.FOX -> TailSpec(floatArrayOf(0.08f, 0.18f, 0.26f, 0.32f)[i], floatArrayOf(0.08f, 0.10f, 0.12f, 0.14f)[i]) // 몸집만 한 플룸(시그니처)
     Species.CAT -> TailSpec(floatArrayOf(0.10f, 0.18f, 0.24f, 0.30f)[i], floatArrayOf(0.045f, 0.05f, 0.055f, 0.06f)[i])
     Species.RABBIT -> TailSpec(0.055f, 0.06f) // 폼폼 꼬리(길이 고정)
     Species.DOG -> TailSpec(floatArrayOf(0.06f, 0.08f, 0.10f, 0.12f)[i], 0.05f) // 말린 꼬리

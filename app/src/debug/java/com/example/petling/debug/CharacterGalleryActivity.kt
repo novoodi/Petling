@@ -85,6 +85,16 @@ private fun Gallery() {
             }
         }
 
+        Header("단색 실루엣 (성숙기 — 실루엣만으로 9종 구분 게이트)")
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Species.entries.forEach { sp ->
+                SilhouetteCellLabeled(sp.displayName, sp, GrowthStage.MATURE)
+            }
+        }
+
         Header("표정 6종 (고양이·성장기2)")
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -184,6 +194,22 @@ private fun CellLabeled(
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Cell(sp, st, br, mood, ex, hue, eye, dp)
+        Text(label, fontSize = 10.sp)
+    }
+}
+
+/** 전 색을 아웃라인 단색으로 치환한 실루엣 셀 — 실루엣만으로 종이 구분되는지 판정. */
+@Composable
+private fun SilhouetteCellLabeled(label: String, sp: Species, st: GrowthStage, dp: Int = 120) {
+    val o = ModoriPalette.OUTLINE
+    val mono = ModoriPalette(
+        body = o, bodyShadow = o, bodyHighlight = o, cap = o, capShadow = o, cheek = o,
+        belly = o, earInner = o, marking = o, iris = o, nose = o, outline = o, accent = o, accentDark = o,
+    )
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Canvas(modifier = Modifier.size(dp.dp).background(Color(0xFFFBF9F4))) {
+            drawCreature(sp, st, null, Mood.CALM, Expression.NEUTRAL, mono, 0, blink = 0f)
+        }
         Text(label, fontSize = 10.sp)
     }
 }
