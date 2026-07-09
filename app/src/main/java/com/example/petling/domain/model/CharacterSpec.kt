@@ -29,6 +29,12 @@ data class CharacterSpec(
     val colorHue: Float = 30f,
     val eyeStyle: Int = 0,
     val animation: CharacterAnimation = CharacterAnimation.IDLE,
+    /**
+     * 개체 시드. 부화 시각(hatchedAt)을 재사용해 부화 시 1회 고정·이후 불변.
+     * 렌더러가 이 값에서 미세 변이(크기·볼·꼬리)를 결정론적으로 파생한다.
+     * 0L=변이 없음(레거시 스냅샷·수기 조립 스펙).
+     */
+    val seed: Long = 0L,
 ) {
     companion object {
         /** 도메인 캐릭터 상태로부터 기본 표정을 정해 스펙을 만든다. */
@@ -45,6 +51,7 @@ data class CharacterSpec(
             colorHue = state.colorHue,
             eyeStyle = state.eyeStyle,
             animation = animation,
+            seed = state.hatchedAt,
         )
 
         fun expressionFor(mood: Mood): Expression = when (mood) {

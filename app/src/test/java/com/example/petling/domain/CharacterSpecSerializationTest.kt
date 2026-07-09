@@ -56,4 +56,20 @@ class CharacterSpecSerializationTest {
         assertEquals(spec, decoded)
         assertEquals(CharacterAnimation.WALK, decoded.animation)
     }
+
+    @Test
+    fun legacy_json_without_seed_defaults_to_zero() {
+        // seed 키가 없던 옛 스냅샷 → seed 0L(변이 없음)로 안전 디코드.
+        val legacy = """{"stage":"MATURE","species":"FOX","colorHue":24.0,"eyeStyle":0,"animation":"IDLE"}"""
+        val spec = json.decodeFromString<CharacterSpec>(legacy)
+        assertEquals(0L, spec.seed)
+    }
+
+    @Test
+    fun seed_round_trips() {
+        val spec = CharacterSpec(stage = GrowthStage.MATURE, species = Species.HAMSTER, seed = 1720000000000L)
+        val decoded = json.decodeFromString<CharacterSpec>(json.encodeToString(spec))
+        assertEquals(spec, decoded)
+        assertEquals(1720000000000L, decoded.seed)
+    }
 }

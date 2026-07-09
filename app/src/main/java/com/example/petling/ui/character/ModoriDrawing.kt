@@ -35,11 +35,13 @@ fun DrawScope.drawCreature(
     crackProgress: Float = 0f,
     hatchAlpha: Float = 1f,
     motion: CreatureMotion = CreatureMotion.STATIC,
+    traits: IndividualTraits = IndividualTraits.NEUTRAL,
 ) {
     val s = size.minDimension
     val origin = Offset((size.width - s) / 2f, (size.height - s) / 2f)
     // 종별 체급: 캔버스 중앙이 아니라 바닥선(GROUND_Y) 기준으로 스케일해 같은 지면에 서게 한다.
-    val k = bulkFor(species, stage)
+    // 개체 시드의 sizeJitter를 체급에 곱해 미세한 크기차를 준다(코트·실루엣 불변).
+    val k = bulkFor(species, stage) * traits.sizeJitter
     fun p(x: Float, y: Float) = Offset(
         origin.x + (0.5f + (x - 0.5f) * k) * s,
         origin.y + (GROUND_Y - (GROUND_Y - y) * k) * s,
@@ -61,7 +63,7 @@ fun DrawScope.drawCreature(
 
     val pose = poseFor(expression)
 
-    val prop = proportionsFor(species, stage)
+    val prop = proportionsFor(species, stage, traits)
     val iris = irisFor(species, palette)
 
     when (species) {

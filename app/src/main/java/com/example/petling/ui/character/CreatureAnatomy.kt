@@ -58,13 +58,14 @@ private val EYE_SCALE = floatArrayOf(1.18f, 1.06f, 1.00f, 0.94f)
 private val LIMB = floatArrayOf(0.018f, 0.045f, 0.060f, 0.072f)
 private val FLUFF = floatArrayOf(0.0f, 0.25f, 0.55f, 0.85f)
 
-/** 종×단계 비율 테이블. */
-fun proportionsFor(species: Species, stage: GrowthStage): Proportions {
+/** 종×단계 비율 테이블. [traits]로 개체 미세 변이(볼·꼬리)를 얹는다(코트·실루엣 불변). */
+fun proportionsFor(species: Species, stage: GrowthStage, traits: IndividualTraits = IndividualTraits.NEUTRAL): Proportions {
     val i = stageIndex(stage)
     // 종별로 변하는 귀/주둥이/꼬리
     val (earLen, earW, earFold) = earSpec(species, i)
     val muzzle = muzzleSpec(species, i)
-    val (tailLen, tailThick) = tailSpec(species, i)
+    val (tailLenBase, tailThick) = tailSpec(species, i)
+    val tailLen = tailLenBase * traits.tailCurl
     val bodyRxMul = when (species) {
         Species.CHICK, Species.PENGUIN -> 0.92f
         Species.HAMSTER -> 1.18f // 웅크린 공: 가로로 넓게
@@ -94,7 +95,7 @@ fun proportionsFor(species: Species, stage: GrowthStage): Proportions {
         eyeScale = EYE_SCALE[i] * if (species == Species.CAT) 1.06f else 1f,
         eyeY = 0.16f,
         eyeGap = 0.52f,
-        fluff = FLUFF[i],
+        fluff = (FLUFF[i] * traits.cheekStrength).coerceIn(0f, 1f),
     )
 }
 
