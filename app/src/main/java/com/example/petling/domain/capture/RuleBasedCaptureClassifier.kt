@@ -44,7 +44,12 @@ class RuleBasedCaptureClassifier : CaptureClassifier {
     )
     private val chatKeywords = listOf("읽음", "안읽음", "님이 들어왔", "님이 나갔", "채팅방", "이모티콘", "답장")
 
-    override suspend fun classify(ocrText: String, categories: List<Category>): Classification {
+    // imagePath는 텍스트 전용 규칙 분류기라 사용하지 않는다.
+    override suspend fun classify(
+        ocrText: String,
+        categories: List<Category>,
+        imagePath: String?,
+    ): Classification {
         val text = ocrText.trim()
         if (text.isBlank()) return result(BuiltInCatalog.MEMORY, categories, "캡처", 0.2f)
 

@@ -15,9 +15,16 @@ data class Classification(
  * 일정 승격은 파싱 후 [ScheduleReclassifier]가 2-pass로 담당.
  *
  * @param categories 활성 카테고리(비어 있지 않다고 가정; 항상 catch-all 포함).
+ * @param imagePath 원본 캡처 이미지의 로컬 경로(있으면). 멀티모달 분류기가
+ *   OCR이 놓치는 시각 맥락(영상 화면 등)을 보완하는 데 쓴다. 텍스트 전용
+ *   구현은 무시한다. (String이라 domain 순수성 유지 — 디코딩은 data 계층)
  */
 interface CaptureClassifier {
-    suspend fun classify(ocrText: String, categories: List<Category>): Classification
+    suspend fun classify(
+        ocrText: String,
+        categories: List<Category>,
+        imagePath: String? = null,
+    ): Classification
 }
 
 /** LLM(Nano) → 규칙 폴백. primary가 null이거나 실패하면 규칙으로 폴백. */
@@ -25,10 +32,14 @@ class CompositeCaptureClassifier(
     private val primary: CaptureClassifier?,
     private val fallback: CaptureClassifier,
 ) : CaptureClassifier {
-    override suspend fun classify(ocrText: String, categories: List<Category>): Classification {
+    override suspend fun classify(
+        ocrText: String,
+        categories: List<Category>,
+        imagePath: String?,
+    ): Classification {
         primary?.let { p ->
-            runCatching { p.classify(ocrText, categories) }.getOrNull()?.let { return it }
+            runCatching { p.classify(ocrText, categories, imagePath) }.getOrNull()?.let { return it }
         }
-        return fallback.classify(ocrText, categories)
+        return fallback.classify(ocrText, categories, imagePath)
     }
 }

@@ -6,8 +6,11 @@ import com.example.petling.domain.capture.CaptureTitle
 import com.example.petling.domain.capture.Classification
 import com.example.petling.domain.model.Category
 import com.google.mlkit.genai.common.FeatureStatus
+import com.google.mlkit.genai.prompt.GenerateContentRequest
 import com.google.mlkit.genai.prompt.Generation
 import com.google.mlkit.genai.prompt.GenerativeModel
+import com.google.mlkit.genai.prompt.ImagePart
+import com.google.mlkit.genai.prompt.TextPart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,7 +32,11 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
     suspend fun availability(): Int =
         runCatching { model.checkStatus() }.getOrDefault(FeatureStatus.UNAVAILABLE)
 
-    override suspend fun classify(ocrText: String, categories: List<Category>): Classification {
+    override suspend fun classify(
+        ocrText: String,
+        categories: List<Category>,
+        imagePath: String?,
+    ): Classification {
         if (ocrText.isBlank()) throw IllegalStateException("empty text")
         if (categories.isEmpty()) throw IllegalStateException("no categories")
 
@@ -46,6 +53,27 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
             }
         }
 
+        // ── 실험: 이미지가 있으면 멀티모달(이미지+텍스트) 분류 우선 ──
+        // OCR이 놓치는 시각 맥락(영상 화면·지도·상품 사진 등)을 보완한다.
+        // A/B: 텍스트 전용 결과도 구해 키만 비교 로그(사용자 콘텐츠 금지).
+        if (imagePath != null) {
+            val mm = classifyMultimodal(ocrText, categories, imagePath)
+            if (mm != null) {
+                val textKey = runCatching { classifyTextOnly(ocrText, categories).categoryKey }.getOrNull()
+                NanoLog.d(
+                    "classifier", "ab",
+                    "mm=${mm.categoryKey} text=${textKey ?: "fail"} same=${mm.categoryKey == textKey}",
+                )
+                return mm
+            }
+            NanoLog.d("classifier", "mm_fallback_text")
+        }
+
+        return classifyTextOnly(ocrText, categories)
+    }
+
+    /** 기존 텍스트 전용 분류 경로(멀티모달 실패·이미지 없음 시). */
+    private suspend fun classifyTextOnly(ocrText: String, categories: List<Category>): Classification {
         val response = model.generateOrNull(buildPrompt(ocrText, categories))
             ?: run {
                 NanoLog.d("classifier", "gen_fail", "textLen=${ocrText.length}")
@@ -62,6 +90,44 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
         // 일정 제목은 파싱 후 ScheduleReclassifier가 timed seed로 덮어쓴다.
         return Classification(category.key, CaptureTitle.autoTitle(ocrText), 0.9f)
     }
+
+    /** 이미지+텍스트 분류. 실패 원인별 로그 후 null(→텍스트 전용 폴백). */
+    private suspend fun classifyMultimodal(
+        ocrText: String,
+        categories: List<Category>,
+        imagePath: String,
+    ): Classification? {
+        val bitmap = loadDownscaled(imagePath) ?: run {
+            NanoLog.d("classifier", "mm_img_fail")
+            return null
+        }
+        val request = GenerateContentRequest.Builder(
+            ImagePart(bitmap),
+            TextPart(buildMultimodalPrompt(ocrText, categories)),
+        ).build()
+        val response = model.generateOrNull(request) ?: run {
+            NanoLog.d("classifier", "mm_gen_fail", "textLen=${ocrText.length}")
+            return null
+        }
+        val answer = response.candidates.firstOrNull()?.text.orEmpty()
+        val category = matchCategory(answer, categories) ?: run {
+            NanoLog.d("classifier", "mm_match_fail", "answerLen=${answer.length}")
+            return null
+        }
+        NanoLog.d("classifier", "mm_ok", "key=${category.key}")
+        return Classification(category.key, CaptureTitle.autoTitle(ocrText), 0.9f)
+    }
+
+    /** 캡처 JPEG를 Nano 입력용으로 다운스케일 로드(최대 변 ~1024px, 메모리·지연 절약). */
+    private fun loadDownscaled(path: String): android.graphics.Bitmap? = runCatching {
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= MM_MAX_DIM_PX) sample *= 2
+        val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+        android.graphics.BitmapFactory.decodeFile(path, opts)
+    }.getOrNull()
 
     /** 캡처 내용을 한 문장으로 요약(온디바이스). 지원·성공 시에만 값, 그 외 null. */
     override suspend fun summarize(text: String): String? {
@@ -112,6 +178,20 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
         }
     }
 
+    private fun buildMultimodalPrompt(ocrText: String, categories: List<Category>): String {
+        val text = ocrText.take(3000)
+        val options = categories.joinToString(", ") { it.label }
+        val descriptions = categories.joinToString("\n") { "- ${it.label}: ${it.description}" }
+        return """
+            이 이미지는 스마트폰 스크린샷이야. 이미지와 함께 화면에서 인식된 텍스트를 참고해서, 이 스크린샷을 아래 보기 중 하나로만 분류해 한국어로 보기 이름 그대로만 답해.
+            보기: $options
+            $descriptions
+            어디에도 안 맞으면 가장 가까운 보기를 골라.
+            인식된 텍스트: ```$text```
+            분류(보기 이름 하나):
+        """.trimIndent()
+    }
+
     private fun buildPrompt(ocrText: String, categories: List<Category>): String {
         val text = ocrText.take(3000)
         val options = categories.joinToString(", ") { it.label }
@@ -140,6 +220,9 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
     }
 
     private companion object {
+        /** 멀티모달 입력 이미지 최대 변 픽셀(다운스케일 기준). */
+        const val MM_MAX_DIM_PX = 1024
+
         // Nano가 보기 밖 단어로 답할 때 baseType으로 흡수. 더 구체적 키워드를 앞에.
         val synonyms = linkedMapOf(
             "쇼핑" to com.example.petling.domain.model.CaptureType.SHOPPING,

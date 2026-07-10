@@ -75,8 +75,9 @@ class CaptureRepository(
         val ocrText = ocr.extract(uri)
 
         // 1) 의도 분류 먼저 — 의도가 파싱 정책을 결정한다
+        // imagePath 전달: 멀티모달 분류기가 OCR이 놓치는 시각 맥락을 보완(실험)
         val categories = categoryRepository.enabledForClassify()
-        val firstPass = classifier.classify(ocrText, categories)
+        val firstPass = classifier.classify(ocrText, categories, imagePath)
         val baseType = categories.firstOrNull { it.key == firstPass.categoryKey }?.baseType
             ?: CaptureType.MEMORY
 
