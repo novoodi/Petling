@@ -56,7 +56,11 @@ import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun CaptureDetailScreen(captureId: Long, onBack: () -> Unit) {
+fun CaptureDetailScreen(
+    captureId: Long,
+    onBack: () -> Unit,
+    onOpenSchedule: (Long) -> Unit = {},
+) {
     val container = appContainer()
     val vm: CaptureDetailViewModel = viewModel(
         factory = viewModelFactory {
@@ -137,8 +141,20 @@ fun CaptureDetailScreen(captureId: Long, onBack: () -> Unit) {
 
             if (canRegisterSchedule || c.categoryKey == BuiltInCatalog.SCHEDULE) {
                 Spacer(Modifier.height(Dimens.Space4))
-                if (scheduleRegistered || c.sourceScheduleId != null) {
-                    Text("캘린더에 등록됨 · 하루 전·당일 알림 ✓", color = MaterialTheme.colorScheme.tertiary)
+                val linkedScheduleId = c.sourceScheduleId
+                if (scheduleRegistered || linkedScheduleId != null) {
+                    // 연결된 일정이 있으면 탭해서 일정 상세(캘린더)로 이동
+                    Text(
+                        if (linkedScheduleId != null) "캘린더에 등록됨 ✓ · 일정 보기 ›"
+                        else "캘린더에 등록됨 · 하루 전·당일 알림 ✓",
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = if (linkedScheduleId != null) {
+                            Modifier
+                                .clip(RoundedCornerShape(Dimens.RadiusSm))
+                                .clickable { onOpenSchedule(linkedScheduleId) }
+                                .padding(vertical = Dimens.Space1)
+                        } else Modifier,
+                    )
                 } else if (canRegisterSchedule) {
                     PetlingButton("일정으로 등록", onClick = { vm.registerAsSchedule() })
                 }

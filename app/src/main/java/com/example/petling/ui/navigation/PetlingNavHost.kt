@@ -198,6 +198,7 @@ fun PetlingNavHost(
                 com.example.petling.ui.library.CaptureDetailScreen(
                     captureId = route.captureId,
                     onBack = { navController.popBackStack() },
+                    onOpenSchedule = { navController.navigate(ScheduleDetailRoute(it)) },
                 )
             }
             composable<VoiceRoute> {
