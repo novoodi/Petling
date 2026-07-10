@@ -53,19 +53,11 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
             }
         }
 
-        // ── 실험: 이미지가 있으면 멀티모달(이미지+텍스트) 분류 우선 ──
+        // 이미지가 있으면 멀티모달(이미지+텍스트) 분류 우선 —
         // OCR이 놓치는 시각 맥락(영상 화면·지도·상품 사진 등)을 보완한다.
-        // A/B: 텍스트 전용 결과도 구해 키만 비교 로그(사용자 콘텐츠 금지).
+        // 실기기 A/B(2026-07-10): 멀티모달 4/4 유효 vs 텍스트 전용 2/4.
         if (imagePath != null) {
-            val mm = classifyMultimodal(ocrText, categories, imagePath)
-            if (mm != null) {
-                val textKey = runCatching { classifyTextOnly(ocrText, categories).categoryKey }.getOrNull()
-                NanoLog.d(
-                    "classifier", "ab",
-                    "mm=${mm.categoryKey} text=${textKey ?: "fail"} same=${mm.categoryKey == textKey}",
-                )
-                return mm
-            }
+            classifyMultimodal(ocrText, categories, imagePath)?.let { return it }
             NanoLog.d("classifier", "mm_fallback_text")
         }
 
