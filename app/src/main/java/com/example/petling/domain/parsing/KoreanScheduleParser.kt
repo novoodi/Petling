@@ -252,6 +252,13 @@ object KoreanScheduleParser {
     }
 
     // ── 시간 ──
+
+    /**
+     * Nano 시드 시간 보강용: 텍스트의 첫 시간 표현을 분(0..1439)으로 추출.
+     * Nano가 "11시"를 HH:mm로 변환하지 못해 시간을 빼먹는 케이스를 코드가 메운다.
+     */
+    fun extractTimeMinute(text: String): Int? = findTime(text)?.value
+
     // Match.value = minuteOfDay, text="no-ampm" 이면 오전/오후 불명
     private fun findTime(line: String): Match? {
         // 정오 / 자정

@@ -20,6 +20,15 @@ class KoreanScheduleParserTest {
         KoreanScheduleParser.parse(text, today).firstOrNull()?.toSeed()
 
     @Test
+    fun extract_time_minute_for_nano_fill() {
+        // Nano 시드 시간 보강용 단독 추출: QA에서 "토요일 11시"의 시간이 유실됐던 케이스
+        assertEquals(11 * 60, KoreanScheduleParser.extractTimeMinute("토요일 11시 할머니네"))
+        assertEquals(19 * 60, KoreanScheduleParser.extractTimeMinute("저녁 7시 스터디"))
+        assertEquals(15 * 60 + 30, KoreanScheduleParser.extractTimeMinute("3시 반 학원")) // 1~7시 오후 휴리스틱
+        assertNull(KoreanScheduleParser.extractTimeMinute("할머니네 놀러가기"))
+    }
+
+    @Test
     fun absolute_month_day_and_time() {
         val s = parseOne("3월 15일 오후 3시 학원 상담")!!
         assertEquals(LocalDate.of(2027, 3, 15), s.date) // 이미 지난 달 → 내년

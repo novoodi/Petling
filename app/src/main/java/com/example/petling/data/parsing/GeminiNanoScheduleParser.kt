@@ -4,6 +4,7 @@ import com.example.petling.data.capture.NanoLog
 import com.example.petling.domain.AppClock
 import com.example.petling.domain.model.ParsedDraftSeed
 import com.example.petling.domain.model.ScheduleSource
+import com.example.petling.domain.parsing.KoreanScheduleParser
 import com.example.petling.domain.parsing.ParsedScheduleDraft
 import com.example.petling.domain.parsing.RelativeDateGuard
 import com.example.petling.domain.parsing.ScheduleParser
@@ -52,14 +53,27 @@ class GeminiNanoScheduleParser(
         // Nano의 상대 날짜 산술("토요일"→오늘 반환)은 신뢰하지 않는다 — 코드가 검증·보정.
         val today = clock.today()
         var dateFixes = 0
-        val seeds = parseDrafts(answer).mapNotNull { it.toSeed(source) }.map { seed ->
-            val verified = RelativeDateGuard.verify(rawText, seed.date, today)
-            if (verified != seed.date) {
+        var timeFills = 0
+        val parsedSeeds = parseDrafts(answer).mapNotNull { it.toSeed(source) }
+        val seeds = parsedSeeds.map { seed ->
+            var s = seed
+            val verified = RelativeDateGuard.verify(rawText, s.date, today)
+            if (verified != s.date) {
                 dateFixes++
-                seed.copy(date = verified)
-            } else seed
+                s = s.copy(date = verified)
+            }
+            // Nano가 "11시"를 HH:mm로 못 바꿔 시간이 비는 케이스 — 단일 일정일 때만
+            // 규칙 추출로 보강(다중 일정은 어느 시드의 시간인지 모호). Nano 값은 덮지 않는다.
+            if (parsedSeeds.size == 1 && s.startMinuteOfDay == null) {
+                KoreanScheduleParser.extractTimeMinute(rawText)?.let {
+                    timeFills++
+                    s = s.copy(startMinuteOfDay = it)
+                }
+            }
+            s
         }
         if (dateFixes > 0) NanoLog.d("parser", "date_fix", "count=$dateFixes")
+        if (timeFills > 0) NanoLog.d("parser", "time_fill", "count=$timeFills")
         if (seeds.isEmpty()) {
             NanoLog.d("parser", "empty", "answerLen=${answer.length}")
         } else {
