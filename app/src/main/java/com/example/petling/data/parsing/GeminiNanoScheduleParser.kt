@@ -35,6 +35,10 @@ class GeminiNanoScheduleParser(
 
     private val model: GenerativeModel by lazy { Generation.getClient() }
 
+    private companion object {
+        const val RETRY_DELAY_MS = 400L
+    }
+
     override suspend fun parse(rawText: String): List<ParsedDraftSeed> {
         if (rawText.isBlank()) return emptyList()
         // Nano가 준비된 기기에서만 시도. 그 외에는 규칙 파서로 폴백.
@@ -49,6 +53,8 @@ class GeminiNanoScheduleParser(
         var response = runCatching { model.generateContent(prompt) }.getOrNull()
         if (response == null) {
             NanoLog.d("parser", "gen_retry", "textLen=${rawText.length}")
+            // 즉시 실패(같은 ms 재실패 관찰) 대비: 짧게 쉬고 재시도해야 실효가 있다.
+            kotlinx.coroutines.delay(RETRY_DELAY_MS)
             response = runCatching { model.generateContent(prompt) }.getOrNull()
         }
         if (response == null) {
