@@ -5,6 +5,7 @@ import com.example.petling.domain.AppClock
 import com.example.petling.domain.model.ParsedDraftSeed
 import com.example.petling.domain.model.ScheduleSource
 import com.example.petling.domain.parsing.ParsedScheduleDraft
+import com.example.petling.domain.parsing.RelativeDateGuard
 import com.example.petling.domain.parsing.ScheduleParser
 import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.prompt.Generation
@@ -48,7 +49,17 @@ class GeminiNanoScheduleParser(
             return emptyList()
         }
         val answer = response.candidates.firstOrNull()?.text.orEmpty()
-        val seeds = parseDrafts(answer).mapNotNull { it.toSeed(source) }
+        // Nano의 상대 날짜 산술("토요일"→오늘 반환)은 신뢰하지 않는다 — 코드가 검증·보정.
+        val today = clock.today()
+        var dateFixes = 0
+        val seeds = parseDrafts(answer).mapNotNull { it.toSeed(source) }.map { seed ->
+            val verified = RelativeDateGuard.verify(rawText, seed.date, today)
+            if (verified != seed.date) {
+                dateFixes++
+                seed.copy(date = verified)
+            } else seed
+        }
+        if (dateFixes > 0) NanoLog.d("parser", "date_fix", "count=$dateFixes")
         if (seeds.isEmpty()) {
             NanoLog.d("parser", "empty", "answerLen=${answer.length}")
         } else {
