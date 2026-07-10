@@ -47,6 +47,10 @@ class CaptureDetailViewModel(
         }
     }
 
+    // 등록 버튼용 파싱 결과 캐시: 버튼 탭 시 재파싱(Nano ~2초) 없이 즉시 등록한다.
+    private var parsedForText: String? = null
+    private var parsedSeeds: List<com.example.petling.domain.model.ParsedDraftSeed> = emptyList()
+
     /**
      * OCR 텍스트에서 날짜가 파싱되면 종류와 무관하게 일정 등록을 제안한다.
      * 파싱은 Nano 호출(~2초)이 섞이므로 ocrText가 바뀔 때만 실행 —
@@ -55,11 +59,23 @@ class CaptureDetailViewModel(
     val canRegisterSchedule: StateFlow<Boolean> = item
         .map { it?.ocrText }
         .distinctUntilChanged()
-        .map { text -> text != null && parser.parse(text).any { seed -> seed.date != null } }
+        .map { text ->
+            if (text == null) return@map false
+            val seeds = parser.parse(text)
+            parsedForText = text
+            parsedSeeds = seeds
+            seeds.any { seed -> seed.date != null }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     private val _scheduleRegistered = MutableStateFlow(false)
     val scheduleRegistered: StateFlow<Boolean> = _scheduleRegistered.asStateFlow()
+
+    private val _registering = MutableStateFlow(false)
+    val registering: StateFlow<Boolean> = _registering.asStateFlow()
+
+    private val _registerFailed = MutableStateFlow(false)
+    val registerFailed: StateFlow<Boolean> = _registerFailed.asStateFlow()
 
     fun changeCategory(key: String) {
         val current = item.value ?: return
@@ -71,12 +87,28 @@ class CaptureDetailViewModel(
         viewModelScope.launch { repository.updateNote(current, note.ifBlank { null }) }
     }
 
-    fun registerAsSchedule() {
+    /**
+     * 일정 등록 후 즉시 일정 상세로 이동한다(onRegistered).
+     * 캐시된 파싱 결과를 우선 사용해 탭 즉시 반응하고, 등록 중 중복 탭은 무시.
+     * 실패는 조용히 삼키지 않고 registerFailed로 알린다(연타 유발 방지).
+     */
+    fun registerAsSchedule(onRegistered: (Long) -> Unit) {
         val current = item.value ?: return
+        if (_registering.value) return
         viewModelScope.launch {
-            val seed = parser.parse(current.ocrText).firstOrNull { it.date != null } ?: return@launch
-            repository.registerAsSchedule(current, seed)
-            _scheduleRegistered.value = true
+            _registering.value = true
+            _registerFailed.value = false
+            val seeds =
+                if (parsedForText == current.ocrText) parsedSeeds else parser.parse(current.ocrText)
+            val seed = seeds.firstOrNull { it.date != null }
+            val scheduleId = seed?.let { repository.registerAsSchedule(current, it) }
+            if (scheduleId != null) {
+                _scheduleRegistered.value = true
+                onRegistered(scheduleId)
+            } else {
+                _registerFailed.value = true
+            }
+            _registering.value = false
         }
     }
 

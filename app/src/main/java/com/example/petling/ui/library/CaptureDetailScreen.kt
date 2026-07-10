@@ -79,6 +79,8 @@ fun CaptureDetailScreen(
     val summarizing by vm.summarizing.collectAsStateWithLifecycle()
     val scheduleRegistered by vm.scheduleRegistered.collectAsStateWithLifecycle()
     val canRegisterSchedule by vm.canRegisterSchedule.collectAsStateWithLifecycle()
+    val registering by vm.registering.collectAsStateWithLifecycle()
+    val registerFailed by vm.registerFailed.collectAsStateWithLifecycle()
     var showDelete by remember { mutableStateOf(false) }
     val formatter = remember { DateTimeFormatter.ofPattern("yyyy.MM.dd") }
 
@@ -156,7 +158,20 @@ fun CaptureDetailScreen(
                         } else Modifier,
                     )
                 } else if (canRegisterSchedule) {
-                    PetlingButton("일정으로 등록", onClick = { vm.registerAsSchedule() })
+                    // 등록되면 즉시 일정 상세(캘린더)로 이동. 등록 중엔 비활성(연타 방지).
+                    PetlingButton(
+                        if (registering) "등록 중…" else "일정으로 등록",
+                        onClick = { vm.registerAsSchedule(onOpenSchedule) },
+                        enabled = !registering,
+                    )
+                    if (registerFailed) {
+                        Spacer(Modifier.height(Dimens.Space1))
+                        Text(
+                            "일정 정보를 찾지 못했어요. 내용을 확인해 주세요.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
 
