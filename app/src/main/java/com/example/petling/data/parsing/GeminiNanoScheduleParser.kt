@@ -44,7 +44,13 @@ class GeminiNanoScheduleParser(
             return emptyList()
         }
 
-        val response = runCatching { model.generateContent(buildPrompt(rawText, clock.today())) }.getOrNull()
+        // 생성 실패는 일시적인 경우가 많아(모델 콜드/바쁨) 1회 재시도 후에만 규칙 폴백.
+        val prompt = buildPrompt(rawText, clock.today())
+        var response = runCatching { model.generateContent(prompt) }.getOrNull()
+        if (response == null) {
+            NanoLog.d("parser", "gen_retry", "textLen=${rawText.length}")
+            response = runCatching { model.generateContent(prompt) }.getOrNull()
+        }
         if (response == null) {
             NanoLog.d("parser", "gen_fail", "textLen=${rawText.length}")
             return emptyList()

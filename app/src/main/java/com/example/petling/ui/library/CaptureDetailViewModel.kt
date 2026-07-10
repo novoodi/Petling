@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -46,9 +47,15 @@ class CaptureDetailViewModel(
         }
     }
 
-    /** OCR 텍스트에서 날짜가 파싱되면 종류와 무관하게 일정 등록을 제안한다. */
+    /**
+     * OCR 텍스트에서 날짜가 파싱되면 종류와 무관하게 일정 등록을 제안한다.
+     * 파싱은 Nano 호출(~2초)이 섞이므로 ocrText가 바뀔 때만 실행 —
+     * 메모 타이핑 등 item의 다른 필드 갱신마다 재파싱하지 않는다.
+     */
     val canRegisterSchedule: StateFlow<Boolean> = item
-        .map { it != null && parser.parse(it.ocrText).any { seed -> seed.date != null } }
+        .map { it?.ocrText }
+        .distinctUntilChanged()
+        .map { text -> text != null && parser.parse(text).any { seed -> seed.date != null } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     private val _scheduleRegistered = MutableStateFlow(false)
