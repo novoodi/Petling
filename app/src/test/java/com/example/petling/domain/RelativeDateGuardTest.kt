@@ -70,6 +70,14 @@ class RelativeDateGuardTest {
     }
 
     @Test
+    fun mixed_tomorrow_and_weekday_untouched() {
+        // 상대 표현 2종 혼합: 어느 시드의 날짜인지 모호 → Nano 값 유지
+        val nano = LocalDate.of(2026, 7, 17)
+        val kept = RelativeDateGuard.verify("내일 3시 회의, 금요일 2시 시험", nano, today)
+        assertEquals(nano, kept)
+    }
+
+    @Test
     fun multiple_weekdays_untouched() {
         // 시간표류: 어느 시드의 날짜인지 모호 → 보정 안 함
         val kept = RelativeDateGuard.verify("월요일 수학, 수요일 영어", today, today)

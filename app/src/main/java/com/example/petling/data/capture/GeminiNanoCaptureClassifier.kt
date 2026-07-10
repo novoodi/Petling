@@ -46,10 +46,10 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
             }
         }
 
-        val response = runCatching { model.generateContent(buildPrompt(ocrText, categories)) }
-            .getOrElse { e ->
+        val response = model.generateOrNull(buildPrompt(ocrText, categories))
+            ?: run {
                 NanoLog.d("classifier", "gen_fail", "textLen=${ocrText.length}")
-                throw IllegalStateException("nano generate failed", e)
+                throw IllegalStateException("nano generate failed")
             }
         val answer = response.candidates.firstOrNull()?.text.orEmpty()
         val category = matchCategory(answer, categories)
@@ -71,7 +71,7 @@ class GeminiNanoCaptureClassifier : CaptureClassifier, CaptureSummarizer {
             NanoLog.d("classifier", "sum_status_fail", "status=$status")
             return null
         }
-        val response = runCatching { model.generateContent(buildSummaryPrompt(text)) }.getOrNull()
+        val response = model.generateOrNull(buildSummaryPrompt(text))
         if (response == null) {
             NanoLog.d("classifier", "sum_gen_fail", "textLen=${text.length}")
             return null

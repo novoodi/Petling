@@ -46,12 +46,16 @@ object RelativeDateGuard {
     }
 
     private fun expectedDate(text: String, today: LocalDate): LocalDate? {
+        val hasDayOffset = DAY_AFTER_TOMORROW.containsMatchIn(text) || text.contains("내일")
+        val mentioned = WEEKDAY.findAll(text).map { it.groupValues[1] }.distinct().toList()
+
+        // 상대 표현이 2종류 이상 섞이면("내일 3시, 금요일 2시" / 요일 2종=시간표)
+        // 어느 시드의 날짜인지 모호 → 보정 포기(Nano 값 유지)
+        if (hasDayOffset && mentioned.isNotEmpty()) return null
+        if (mentioned.size > 1) return null
+
         if (DAY_AFTER_TOMORROW.containsMatchIn(text)) return today.plusDays(2)
         if (text.contains("내일")) return today.plusDays(1)
-
-        // 요일이 2종 이상이면(시간표·다중 일정) 어느 시드 것인지 모호 → 보정 포기
-        val mentioned = WEEKDAY.findAll(text).map { it.groupValues[1] }.distinct().toList()
-        if (mentioned.size > 1) return null
 
         NEXT_WEEK.find(text)?.let { m ->
             return weekdayInWeek(today.plusWeeks(1), WEEKDAYS.getValue(m.groupValues[2]))

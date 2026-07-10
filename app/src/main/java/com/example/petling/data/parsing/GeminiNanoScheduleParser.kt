@@ -1,6 +1,7 @@
 package com.example.petling.data.parsing
 
 import com.example.petling.data.capture.NanoLog
+import com.example.petling.data.capture.generateOrNull
 import com.example.petling.domain.AppClock
 import com.example.petling.domain.model.ParsedDraftSeed
 import com.example.petling.domain.model.ScheduleSource
@@ -49,13 +50,14 @@ class GeminiNanoScheduleParser(
         }
 
         // 생성 실패는 일시적인 경우가 많아(모델 콜드/바쁨) 1회 재시도 후에만 규칙 폴백.
+        // generateOrNull이 예외→null과 매달림 타임아웃을 함께 처리한다.
         val prompt = buildPrompt(rawText, clock.today())
-        var response = runCatching { model.generateContent(prompt) }.getOrNull()
+        var response = model.generateOrNull(prompt)
         if (response == null) {
             NanoLog.d("parser", "gen_retry", "textLen=${rawText.length}")
             // 즉시 실패(같은 ms 재실패 관찰) 대비: 짧게 쉬고 재시도해야 실효가 있다.
             kotlinx.coroutines.delay(RETRY_DELAY_MS)
-            response = runCatching { model.generateContent(prompt) }.getOrNull()
+            response = model.generateOrNull(prompt)
         }
         if (response == null) {
             NanoLog.d("parser", "gen_fail", "textLen=${rawText.length}")
