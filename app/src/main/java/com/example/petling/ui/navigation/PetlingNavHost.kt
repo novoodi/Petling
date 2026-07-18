@@ -62,6 +62,8 @@ fun PetlingNavHost(
         .collectAsStateWithLifecycle(initialValue = null)
     val petGreeting by container.petSpeech.collectAsStateWithLifecycle()
     val yardState = rememberYardState()
+    // perch 레지스트리: NavHost 레벨 remember → 4탭 공유·지속. 화면·오버레이 공통 스코프로 제공.
+    val perchRegistry = androidx.compose.runtime.remember { com.example.petling.ui.overlay.PerchRegistry() }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         container.petCelebrate.collect { evolved -> yardState.celebrate(evolved) }
     }
@@ -119,6 +121,9 @@ fun PetlingNavHost(
             it.hasRoute(SettingsRoute::class)
     } ?: false
 
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.example.petling.ui.overlay.LocalPerchRegistry provides perchRegistry,
+    ) {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
@@ -131,7 +136,10 @@ fun PetlingNavHost(
             }
         },
     ) { padding ->
-      Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+      // unpadded 래퍼: 원점=root(0,0). 캐릭터 오버레이가 perch boundsInRoot()와 1:1 정렬되도록
+      // NavHost(padded)와 AppPet(unpadded)을 형제로 둔다. 네비바는 금지구역이라 덮지 않는다.
+      Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
         NavHost(
             navController = navController,
             startDestination = if (startOnboarding) OnboardingRoute else HomeRoute,
@@ -225,8 +233,10 @@ fun PetlingNavHost(
                 )
             }
         }
+        } // padded NavHost 박스 닫기
 
-        // 메인 4개 탭에서만 하단 마당 캐릭터를 띄운다(온보딩/상세 화면 제외).
+        // 메인 4개 탭에서만 캐릭터를 띄운다(온보딩/상세 화면 제외). unpadded 형제라 root 좌표.
+        // 지면선은 콘텐츠 하단(네비바 위)에 두도록 bottom inset을 넘긴다.
         val ch = petCharacter
         if (showBottomBar && ch != null) {
             AppPet(
@@ -235,10 +245,13 @@ fun PetlingNavHost(
                 state = yardState,
                 showBubble = currentDest?.hasRoute(HomeRoute::class) ?: false,
                 greeting = petGreeting,
+                bottomInset = padding.calculateBottomPadding(),
+                perchRegistry = perchRegistry,
                 onOpenCharacter = { navController.navigate(CharacterRoute) },
             )
         }
       }
+    }
     }
 }
 

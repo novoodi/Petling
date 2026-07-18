@@ -33,9 +33,6 @@ import com.example.petling.domain.model.CharacterSpec
 import com.example.petling.ui.theme.Dimens
 import kotlin.math.roundToInt
 
-/** 스프라이트 높이(마당 하단 기준). RoamingYard의 SPRITE와 일치. */
-private val PET_SPRITE = 140.dp
-
 /**
  * 앱 전역 마당 캐릭터. 하단 띠를 혼자 배회하고(모든 탭 공유), 홈에서는 머리 위에 말풍선을 띄운다.
  * 터치는 캐릭터·말풍선 위에서만 소비되고 나머지는 뒤 콘텐츠로 통과한다.
@@ -47,37 +44,41 @@ fun AppPet(
     state: YardState,
     showBubble: Boolean,
     greeting: String,
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
+    perchRegistry: com.example.petling.ui.overlay.PerchRegistry? = null,
     onOpenCharacter: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     Box(modifier = modifier.fillMaxSize()) {
-        // 말풍선(홈에서만) — 캐릭터 머리 위에 떠서 x를 따라 이동
+        // 말풍선(홈에서만) — 캐릭터 머리 위에 떠서 발판(baseY)+x를 따라 이동
         if (showBubble && greeting.isNotBlank()) {
             var bubbleW by remember { mutableIntStateOf(0) }
-            val spriteTopPx = with(density) { PET_SPRITE.toPx() }
+            var bubbleH by remember { mutableIntStateOf(0) }
             val gapPx = with(density) { 4.dp.toPx() }
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val maxXpx = with(density) { maxWidth.toPx() }
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.TopStart)
                         .offset {
                             val cx = state.centerX() - bubbleW / 2f
+                            // 스프라이트 top = baseY + y. 말풍선 바닥이 머리 위 gap만큼.
+                            val by = state.baseY.value + state.y.value - bubbleH - gapPx
                             IntOffset(
                                 cx.coerceIn(0f, (maxXpx - bubbleW).coerceAtLeast(0f)).roundToInt(),
-                                -(spriteTopPx + gapPx).roundToInt(),
+                                by.roundToInt(),
                             )
                         }
-                        .onSizeChanged { bubbleW = it.width },
+                        .onSizeChanged { bubbleW = it.width; bubbleH = it.height },
                 ) {
                     PetBubble(greeting, onClick = onOpenCharacter)
                 }
             }
         }
 
-        // 마당(하단 배회)
-        RoamingYard(baseSpec, affection, state, Modifier.align(Alignment.BottomCenter))
+        // 마당(전체 오버레이 배회, 지면선은 콘텐츠 하단=네비바 위)
+        RoamingYard(baseSpec, affection, state, bottomInset, perchRegistry, Modifier.fillMaxSize())
     }
 }
 
