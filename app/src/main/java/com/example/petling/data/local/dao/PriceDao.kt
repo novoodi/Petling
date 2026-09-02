@@ -66,6 +66,9 @@ interface PriceDao {
     @Query("SELECT * FROM price_entries ORDER BY createdAt DESC LIMIT 1")
     suspend fun latestEntryOverall(): PriceEntryEntity?
 
+    @Query("UPDATE price_products SET marketGoodId = :goodId WHERE id = :productId")
+    suspend fun setMarketGoodId(productId: Long, goodId: Long?)
+
     // ── 백업(내보내기/가져오기) 전용 스냅샷 조회
     @Query("SELECT * FROM price_products ORDER BY id")
     suspend fun allProducts(): List<PriceProductEntity>

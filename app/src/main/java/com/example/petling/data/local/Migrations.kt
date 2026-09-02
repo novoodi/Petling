@@ -90,6 +90,33 @@ object Migrations {
         }
     }
 
+    /**
+     * v9→v10: 참가격 시장 데이터(판매점·상품·업태별 중앙값) 로컬 테이블 3개 + price_products.marketGoodId.
+     * 기존 데이터 무변경. SQL은 schemas/10.json과 반드시 일치해야 한다.
+     */
+    val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `price_products` ADD COLUMN `marketGoodId` INTEGER")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `market_stores` (" +
+                    "`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `type` TEXT NOT NULL, " +
+                    "`area` TEXT, `areaDetail` TEXT, `addr` TEXT, PRIMARY KEY(`id`))"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `market_products` (" +
+                    "`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `normalizedName` TEXT NOT NULL, " +
+                    "`totalAmount` REAL, `totalUnit` TEXT, `cls` TEXT, PRIMARY KEY(`id`))"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_market_products_normalizedName` ON `market_products` (`normalizedName`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `market_medians` (" +
+                    "`goodId` INTEGER NOT NULL, `day` TEXT NOT NULL, `type` TEXT NOT NULL, " +
+                    "`priceWon` INTEGER NOT NULL, PRIMARY KEY(`goodId`, `day`, `type`))"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_market_medians_goodId` ON `market_medians` (`goodId`)")
+        }
+    }
+
     /** AppContainer가 databaseBuilder.addMigrations(*Migrations.ALL)로 등록한다. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
 }

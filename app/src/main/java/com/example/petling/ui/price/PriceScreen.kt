@@ -51,6 +51,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.petling.data.market.MarketInsight
+import com.example.petling.data.market.MarketRepository
 import com.example.petling.data.price.NanoState
 import com.example.petling.data.repository.TrackedProduct
 import com.example.petling.ui.ActionIntents
@@ -73,6 +75,11 @@ private const val INTRO_WAIT_MS = 4_000L
 
 internal fun formatEpochDay(epochDay: Long): String =
     LocalDate.ofEpochDay(epochDay).format(DateTimeFormatter.ofPattern("M/d"))
+
+/** 참가격 조사일 "20260828" → "8/28". 형식이 다르면 그대로. */
+internal fun formatMarketDay(day: String): String = runCatching {
+    LocalDate.parse(day, DateTimeFormatter.ofPattern("yyyyMMdd")).format(DateTimeFormatter.ofPattern("M/d"))
+}.getOrDefault(day)
 
 /**
  * 가격 추적 탭: 마트 가격표를 찍으면 상품·가격을 읽어
@@ -160,6 +167,7 @@ fun PriceScreen(onOpenProduct: (Long) -> Unit) {
                 onPriceChange = vm::updatePriceText,
                 onPickCandidate = vm::pickCandidate,
                 onStoreChange = vm::updateStore,
+                onPickMarket = vm::pickMarketProduct,
                 onRequery = vm::requery,
                 onSave = vm::save,
                 onCancel = vm::dismissAnalysis,
@@ -285,11 +293,76 @@ private fun TrackedProductCard(item: TrackedProduct, onClick: () -> Unit) {
     }
 }
 
-/** 매장 선택: 최근 매장 칩 + 직접 입력. 기록이 없는 첫 사용은 입력창부터 보여준다. */
+/**
+ * 시장 가격 카드. 확정(자동 또는 사용자 선택)이면 업태별 중앙값과 현재가 비교,
+ * 미확정이면 후보 칩 "이 상품이 맞나요?"를 보여준다.
+ */
+@Composable
+private fun MarketCard(market: MarketInsight, priceNow: Int?, onPick: (Long?) -> Unit) {
+    PetlingCard(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Text("🏷 시장 가격 · ${formatMarketDay(market.latestDay)} 조사", fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            if (market.confident) {
+                Text(market.product.name, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(4.dp))
+                val line = listOf("LM", "SM", "DP", "CS").mapNotNull { t ->
+                    market.medianByType[t]?.let { "${MarketRepository.TYPE_LABELS[t]} ${won(it)}" }
+                }.joinToString(" · ")
+                Text(line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val ref = market.reference
+                if (priceNow != null && ref != null) {
+                    val (type, median) = ref
+                    val label = MarketRepository.TYPE_LABELS[type] ?: type
+                    val pct = ((priceNow - median) * 100.0 / median).toInt()
+                    val verdict = when {
+                        pct <= -3 -> "$label 중앙값보다 ${-pct}% 저렴해요 🎉"
+                        pct >= 3 -> "$label 중앙값보다 $pct% 비싸요"
+                        else -> "$label 중앙값과 비슷해요"
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(verdict, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "다른 상품이에요",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { onPick(null) },
+                )
+            } else {
+                Text(
+                    "참가격에 비슷한 상품이 있어요 — 이 상품이 맞나요?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    market.candidates.forEach { c ->
+                        SuggestionChip(onClick = { onPick(c.product.id) }, label = { Text(c.product.name) })
+                    }
+                    SuggestionChip(onClick = { onPick(null) }, label = { Text("해당 없음") })
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                MarketRepository.SOURCE_LABEL,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 매장 선택: 최근 매장 칩 + 직접 입력(참가격 판매점 자동완성). 기록이 없는 첫 사용은 입력창부터 보여준다. */
 @Composable
 private fun StoreSection(
     storeName: String,
     recentStores: List<String>,
+    suggestions: List<String>,
     onStoreChange: (String) -> Unit,
 ) {
     val isCustom = storeName.isNotBlank() && storeName !in recentStores
@@ -332,6 +405,17 @@ private fun StoreSection(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
+            if (suggestions.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    suggestions.forEach { s ->
+                        SuggestionChip(onClick = { onStoreChange(s) }, label = { Text(s) })
+                    }
+                }
+            }
         }
         if (storeName.isBlank()) {
             Spacer(Modifier.height(4.dp))
@@ -369,6 +453,7 @@ private fun ResultBody(
     onPriceChange: (String) -> Unit,
     onPickCandidate: (Int) -> Unit,
     onStoreChange: (String) -> Unit,
+    onPickMarket: (Long?) -> Unit,
     onRequery: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
@@ -451,6 +536,7 @@ private fun ResultBody(
         StoreSection(
             storeName = ui.storeName,
             recentStores = ui.recentStores,
+            suggestions = ui.storeSuggestions,
             onStoreChange = onStoreChange,
         )
 
@@ -488,6 +574,11 @@ private fun ResultBody(
                     }
                 }
             }
+        }
+
+        // 시장 가격(참가격): 첫 촬영에도 "지금 가격이 시장 대비 어떤지"를 보여준다
+        analysis.market?.let { market ->
+            MarketCard(market = market, priceNow = priceNow, onPick = onPickMarket)
         }
 
         // 온라인 시세: 공식 가격 API가 없어(네이버 쇼핑 검색 API 2026-07 종료)

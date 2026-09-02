@@ -6,6 +6,8 @@ import com.example.petling.data.capture.OcrTextExtractor
 import com.example.petling.data.local.dao.PriceDao
 import com.example.petling.data.local.entity.PriceEntryEntity
 import com.example.petling.data.local.entity.PriceProductEntity
+import com.example.petling.data.market.MarketInsight
+import com.example.petling.data.market.MarketRepository
 import com.example.petling.domain.AppClock
 import com.example.petling.domain.price.PriceTagExtractor
 import com.example.petling.domain.price.PreviousRecord
@@ -36,6 +38,12 @@ data class PriceAnalysis(
     val matchedProduct: PriceProductEntity?,
     /** 매칭된 상품의 비교 대상 기록(같은 매장 우선). 매장 선택이 바뀌면 [PriceRepository.withStore]로 갱신. */
     val previous: PreviousRecord?,
+    /** 시장 비교(참가격). 참가격에 없는 상품이거나 데이터 미수신이면 null. */
+    val market: MarketInsight? = null,
+    /** 확정된 참가격 상품 id(저장된 매핑 / 자동 확정 / 사용자 선택). 저장 시 상품에 기억된다. */
+    val marketGoodId: Long? = null,
+    /** 사용자가 "해당 없음"을 눌러 시장 카드를 닫은 경우. */
+    val marketDismissed: Boolean = false,
 )
 
 /**
@@ -49,6 +57,7 @@ class PriceRepository(
     private val ocr: OcrTextExtractor,
     private val extractor: PriceTagExtractor,
     private val clock: AppClock,
+    private val market: MarketRepository,
 ) {
 
     fun observeTracked(): Flow<List<TrackedProduct>> =
@@ -88,6 +97,7 @@ class PriceRepository(
         val tag = extractor.extract(ocrText, imagePath)
 
         val matched = findExisting(tag)
+        val insight = marketFor(tag, matched?.marketGoodId, storeName)
 
         return PriceAnalysis(
             imagePath = imagePath,
@@ -95,23 +105,53 @@ class PriceRepository(
             tag = tag,
             matchedProduct = matched,
             previous = matched?.let { previousFor(it.id, storeName) },
+            market = insight,
+            marketGoodId = insight?.takeIf { it.confident }?.product?.id,
         )
+    }
+
+    /** 참가격 매칭: 저장된 매핑 우선, 없으면 이름·용량. 데이터가 없거나 실패하면 null(카드 숨김). */
+    private suspend fun marketFor(tag: PriceTagInfo, savedGoodId: Long?, storeName: String?): MarketInsight? =
+        runCatching {
+            market.insightFor(tag.name, tag.volumeAmount, tag.volumeUnit, savedGoodId, storeName)
+        }.getOrNull()
+
+    /** 사용자가 시장 후보를 골랐거나(goodId) "해당 없음"(null)을 눌렀을 때. */
+    suspend fun withMarketPick(analysis: PriceAnalysis, goodId: Long?, storeName: String?): PriceAnalysis {
+        if (goodId == null) return analysis.copy(market = null, marketGoodId = null, marketDismissed = true)
+        val insight = runCatching { market.insightForGoodId(goodId, storeName) }.getOrNull()
+        return analysis.copy(market = insight, marketGoodId = insight?.product?.id, marketDismissed = false)
     }
 
     /** 사용자가 이름을 수정했을 때 재방문 매칭을 다시 수행한다. */
     suspend fun requery(analysis: PriceAnalysis, name: String, storeName: String?): PriceAnalysis {
         val tag = analysis.tag.copy(name = name)
         val matched = findExisting(tag)
+        val insight = marketFor(tag, matched?.marketGoodId, storeName)
         return analysis.copy(
             tag = tag,
             matchedProduct = matched,
             previous = matched?.let { previousFor(it.id, storeName) },
+            market = insight,
+            marketGoodId = insight?.takeIf { it.confident }?.product?.id,
+            marketDismissed = false,
         )
     }
 
-    /** 매장 선택이 바뀌면 비교 대상 기록만 다시 고른다(OCR·매칭은 그대로). */
-    suspend fun withStore(analysis: PriceAnalysis, storeName: String?): PriceAnalysis =
-        analysis.copy(previous = analysis.matchedProduct?.let { previousFor(it.id, storeName) })
+    /** 매장 선택이 바뀌면 비교 대상 기록과 시장 카드의 업태 기준만 다시 고른다(OCR·매칭은 그대로). */
+    suspend fun withStore(analysis: PriceAnalysis, storeName: String?): PriceAnalysis {
+        val insight = analysis.market?.let { m ->
+            m.copy(storeType = runCatching { market.storeTypeFor(storeName) }.getOrNull())
+        }
+        return analysis.copy(
+            previous = analysis.matchedProduct?.let { previousFor(it.id, storeName) },
+            market = insight,
+        )
+    }
+
+    /** 매장 직접 입력 자동완성(참가격 판매점 이름). */
+    suspend fun storeSuggestions(query: String): List<String> =
+        runCatching { market.searchStoreNames(query) }.getOrDefault(emptyList())
 
     private suspend fun previousFor(productId: Long, storeName: String?): PreviousRecord? =
         previousFor(priceDao.entriesFor(productId), storeName)
@@ -151,6 +191,11 @@ class PriceRepository(
                 createdAt = now,
             )
         )
+
+        // 시장 매핑 기억: 다음 촬영부터 이름 매칭 없이 바로 붙는다
+        analysis.marketGoodId?.let { goodId ->
+            if (analysis.matchedProduct?.marketGoodId != goodId) market.rememberMapping(productId, goodId)
+        }
 
         priceDao.insertEntry(
             PriceEntryEntity(

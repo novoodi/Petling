@@ -8,6 +8,7 @@ import com.example.petling.data.capture.ImageStore
 import com.example.petling.data.capture.OcrTextExtractor
 import com.example.petling.data.local.Migrations
 import com.example.petling.data.local.PetlingDatabase
+import com.example.petling.data.market.MarketRepository
 import com.example.petling.data.price.GeminiNanoPriceTagExtractor
 import com.example.petling.data.repository.PriceRepository
 import com.example.petling.domain.AppClock
@@ -38,12 +39,22 @@ class AppContainer(context: Context) {
     /** 가격표 추출: 숫자는 규칙(OCR), Nano는 상품명·후보 선택만(미지원 기기는 규칙만). */
     val priceTagExtractor = GeminiNanoPriceTagExtractor()
 
+    /** 시장 가격(참가격) 로컬 사본 — GitHub Pages 게시본만 받는다(공공 API 직접 호출 없음). */
+    val marketRepository = MarketRepository(
+        context = appContext,
+        database = database,
+        marketDao = database.marketDao(),
+        priceDao = database.priceDao(),
+        clock = clock,
+    )
+
     val priceRepository = PriceRepository(
         priceDao = database.priceDao(),
         imageStore = imageStore,
         ocr = ocrTextExtractor,
         extractor = priceTagExtractor,
         clock = clock,
+        market = marketRepository,
     )
 
     /** JSON 백업 파일 내보내기/가져오기(사진 제외). 기기 교체 시 유일한 복구 경로. */

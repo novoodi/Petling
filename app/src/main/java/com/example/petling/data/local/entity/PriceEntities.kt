@@ -19,6 +19,8 @@ data class PriceProductEntity(
     /** 가격표 바코드(13자리) — 있으면 최우선 매칭 키. */
     val barcode: String? = null,
     val createdAt: Long,
+    /** 사용자가 확인한 참가격 상품 id(시장 비교용). null이면 매번 이름으로 매칭. */
+    val marketGoodId: Long? = null,
 )
 
 /** 특정 날짜에 관측한 가격 한 건(사진 1장 = 1건). */

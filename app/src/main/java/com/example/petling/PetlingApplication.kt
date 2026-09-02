@@ -17,5 +17,9 @@ class PetlingApplication : Application() {
         CoroutineScope(Dispatchers.IO).launch {
             container.priceTagExtractor.prewarm()
         }
+        // 시장 가격(참가격) 게시본이 없거나 3일 넘게 지났으면 받아둔다(실패는 조용히, 설정에서 수동 갱신 가능)
+        CoroutineScope(Dispatchers.IO).launch {
+            container.marketRepository.syncIfStale()
+        }
     }
 }

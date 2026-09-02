@@ -25,6 +25,8 @@ sealed interface AnalysisUi {
         val storeName: String = "",
         /** 최근 사용 매장 칩 후보. */
         val recentStores: List<String> = emptyList(),
+        /** 매장 직접 입력 중 참가격 판매점 자동완성. */
+        val storeSuggestions: List<String> = emptyList(),
         val requerying: Boolean = false,
     ) : AnalysisUi
 }
@@ -69,7 +71,20 @@ class PriceViewModel(private val repository: PriceRepository) : ViewModel() {
         _analysis.value = current.copy(storeName = trimmed)
         storeJob?.cancel()
         storeJob = viewModelScope.launch {
+            val suggestions = if (trimmed.length >= 2 && trimmed !in current.recentStores) {
+                repository.storeSuggestions(trimmed).filter { it != trimmed }
+            } else emptyList()
             val updated = repository.withStore(current.analysis, trimmed.ifBlank { null })
+            val latest = _analysis.value as? AnalysisUi.Ready ?: return@launch
+            _analysis.value = latest.copy(analysis = updated, storeSuggestions = suggestions)
+        }
+    }
+
+    /** 시장 카드: 후보 선택(goodId) 또는 "해당 없음"(null). */
+    fun pickMarketProduct(goodId: Long?) {
+        val current = _analysis.value as? AnalysisUi.Ready ?: return
+        viewModelScope.launch {
+            val updated = repository.withMarketPick(current.analysis, goodId, current.storeName.ifBlank { null })
             val latest = _analysis.value as? AnalysisUi.Ready ?: return@launch
             _analysis.value = latest.copy(analysis = updated)
         }

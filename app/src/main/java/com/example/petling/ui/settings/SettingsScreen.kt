@@ -34,11 +34,21 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.petling.BuildConfig
 import com.example.petling.data.backup.BackupFormatException
+import com.example.petling.data.market.MarketRepository
 import com.example.petling.ui.ActionIntents
 import com.example.petling.ui.appContainer
 import com.example.petling.ui.components.OnDeviceAiCard
 import com.example.petling.ui.components.PetlingCard
 import kotlinx.coroutines.launch
+
+private fun formatMarketDay(day: String): String = runCatching {
+    java.time.LocalDate.parse(day, java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"))
+        .format(java.time.format.DateTimeFormatter.ofPattern("M/d"))
+}.getOrDefault(day)
+
+private fun formatDateTime(millis: Long): String =
+    java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofPattern("M/d HH:mm"))
 
 private const val PRIVACY_POLICY_URL =
     "https://spotless-mahogany-316.notion.site/Petling-397f6d06643c80469ff5eaba97086359"
@@ -52,6 +62,9 @@ fun SettingsScreen() {
     val nano = container.priceTagExtractor
     val nanoState by nano.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { nano.refresh() }
+
+    val market = container.marketRepository
+    val marketState by market.state.collectAsStateWithLifecycle()
 
     // 백업: 시스템 파일 선택기(CreateDocument/OpenDocument) → 저장소 권한 불필요
     val scope = rememberCoroutineScope()
@@ -133,6 +146,36 @@ fun SettingsScreen() {
             onDownload = { nano.download() },
             modifier = Modifier.fillMaxWidth(),
         )
+
+        PetlingCard(modifier = Modifier.fillMaxWidth()) {
+            Text("시장 가격 데이터", fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                when {
+                    marketState.syncing -> "받는 중…"
+                    marketState.hasData -> "최신 조사일 ${marketState.latestDay?.let { formatMarketDay(it) } ?: "-"} · " +
+                        "상품 ${marketState.productCount}개 · 갱신 ${marketState.lastSyncMillis?.let { formatDateTime(it) } ?: "-"}"
+                    else -> "아직 받지 못했어요 — Wi-Fi에서 '지금 갱신'을 눌러주세요"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            marketState.lastError?.let {
+                Text("마지막 오류: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { scope.launch { market.sync() } },
+                enabled = !marketState.syncing,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("지금 갱신") }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "${MarketRepository.SOURCE_LABEL}. 앱은 게시된 공공데이터 파일(약 240KB)만 내려받고, 사진·기록은 어디에도 보내지 않아요.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         PetlingCard(modifier = Modifier.fillMaxWidth()) {
             Text("개인정보", fontWeight = FontWeight.SemiBold)

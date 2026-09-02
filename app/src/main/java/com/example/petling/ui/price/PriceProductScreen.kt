@@ -41,18 +41,44 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.petling.data.local.entity.PriceEntryEntity
 import com.example.petling.data.local.entity.PriceProductEntity
+import com.example.petling.data.market.MarketRepository
 import com.example.petling.data.repository.PriceRepository
 import com.example.petling.ui.appContainer
 import com.example.petling.ui.components.PetlingCard
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** 상세 상단 한 줄: 참가격 상품명 + 최신 조사일 + 기준 업태 중앙값. */
+data class MarketLine(val productName: String, val day: String, val typeLabel: String, val medianWon: Int)
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class PriceProductViewModel(
     private val repository: PriceRepository,
+    private val market: MarketRepository,
     private val productId: Long,
 ) : ViewModel() {
+
+    /** 저장된 참가격 매핑이 있을 때만 값이 있다. */
+    val marketLine: StateFlow<MarketLine?> =
+        repository.observeProduct(productId)
+            .flatMapLatest { p ->
+                val goodId = p?.marketGoodId ?: return@flatMapLatest flowOf(null)
+                market.observeMedians(goodId).map { medians ->
+                    val day = medians.maxOfOrNull { it.day } ?: return@map null
+                    val latest = medians.filter { it.day == day }.associate { it.type to it.priceWon }
+                    val type = if (latest.containsKey("LM")) "LM" else "ALL"
+                    val median = latest[type] ?: return@map null
+                    val name = market.product(goodId)?.name ?: return@map null
+                    MarketLine(name, day, MarketRepository.TYPE_LABELS[type] ?: type, median)
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val product: StateFlow<PriceProductEntity?> =
         repository.observeProduct(productId)
@@ -77,11 +103,12 @@ fun PriceProductScreen(productId: Long, onBack: () -> Unit) {
     val container = appContainer()
     val vm: PriceProductViewModel = viewModel(
         factory = viewModelFactory {
-            initializer { PriceProductViewModel(container.priceRepository, productId) }
+            initializer { PriceProductViewModel(container.priceRepository, container.marketRepository, productId) }
         },
     )
     val product by vm.product.collectAsStateWithLifecycle()
     val entries by vm.entries.collectAsStateWithLifecycle()
+    val marketLine by vm.marketLine.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -115,6 +142,14 @@ fun PriceProductScreen(productId: Long, onBack: () -> Unit) {
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    marketLine?.let { m ->
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "🏷 ${m.typeLabel} 시장 중앙값 ${won(m.medianWon)} · ${formatMarketDay(m.day)} 조사 · ${m.productName}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Spacer(Modifier.height(4.dp))
                 }
             }
