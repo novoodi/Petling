@@ -29,8 +29,9 @@ android {
         targetSdk = 36
         // 2.0: 마트 가격 추적 앱으로 전면 개편(구 Petling 기능 제거)
         // 2.1: 매장 기록, JSON 백업, 온디바이스 AI 안내·다운로드 버튼
-        versionCode = 3
-        versionName = "2.1"
+        // 2.2: 시장 가격 비교(한국소비자원 참가격 게시본 수신·매칭·카드)
+        versionCode = 4
+        versionName = "2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
