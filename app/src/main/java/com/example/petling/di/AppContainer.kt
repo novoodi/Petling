@@ -2,6 +2,8 @@ package com.example.petling.di
 
 import android.content.Context
 import androidx.room.Room
+import com.example.petling.BuildConfig
+import com.example.petling.data.backup.BackupRepository
 import com.example.petling.data.capture.ImageStore
 import com.example.petling.data.capture.OcrTextExtractor
 import com.example.petling.data.local.Migrations
@@ -42,5 +44,14 @@ class AppContainer(context: Context) {
         ocr = ocrTextExtractor,
         extractor = priceTagExtractor,
         clock = clock,
+    )
+
+    /** JSON 백업 파일 내보내기/가져오기(사진 제외). 기기 교체 시 유일한 복구 경로. */
+    val backupRepository = BackupRepository(
+        context = appContext,
+        database = database,
+        priceDao = database.priceDao(),
+        clock = clock,
+        appVersion = BuildConfig.VERSION_NAME,
     )
 }
