@@ -56,6 +56,8 @@ class GeminiNanoPriceTagExtractor(
         val status = runCatching { model.checkStatus() }.getOrNull()
         if (status != FeatureStatus.AVAILABLE) {
             NanoLog.d("price", "status_skip", "status=$status")
+            // 앱 시작 시 prewarm이 놓친 경우(AICore 초기화 지연 등) 여기서 다시 다운로드를 건다.
+            if (status == FeatureStatus.DOWNLOADABLE) prewarm()
             return ruleInfo
         }
 
