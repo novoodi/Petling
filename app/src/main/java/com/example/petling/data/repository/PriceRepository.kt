@@ -8,8 +8,11 @@ import com.example.petling.data.local.entity.PriceEntryEntity
 import com.example.petling.data.local.entity.PriceProductEntity
 import com.example.petling.domain.AppClock
 import com.example.petling.domain.price.PriceTagExtractor
+import com.example.petling.domain.price.PreviousRecord
 import com.example.petling.domain.price.PriceTagInfo
 import com.example.petling.domain.price.normalizeProductName
+import com.example.petling.domain.price.normalizeStoreName
+import com.example.petling.domain.price.previousFor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
@@ -17,8 +20,10 @@ import kotlinx.coroutines.flow.combine
 data class TrackedProduct(
     val product: PriceProductEntity,
     val latest: PriceEntryEntity?,
-    /** 직전 기록 대비 차액(오늘-지난번). 기록이 2개 이상일 때만. */
+    /** 직전 기록 대비 차액(오늘-지난번). 같은 매장 직전 기록 우선, 없으면 전체 직전 기록. */
     val deltaWon: Int?,
+    /** deltaWon이 다른 매장 기록과의 비교인지(같은 매장 기록이 없어 폴백). */
+    val deltaOtherStore: Boolean,
     val entryCount: Int,
 )
 
@@ -29,8 +34,8 @@ data class PriceAnalysis(
     val tag: PriceTagInfo,
     /** 같은 상품으로 매칭된 기존 상품(재방문). */
     val matchedProduct: PriceProductEntity?,
-    /** 매칭된 상품의 직전 기록(재방문 비교용). */
-    val previousEntry: PriceEntryEntity?,
+    /** 매칭된 상품의 비교 대상 기록(같은 매장 우선). 매장 선택이 바뀌면 [PriceRepository.withStore]로 갱신. */
+    val previous: PreviousRecord?,
 )
 
 /**
@@ -51,10 +56,13 @@ class PriceRepository(
             val byProduct = entries.groupBy { it.productId }
             products.map { product ->
                 val list = byProduct[product.id].orEmpty().sortedByDescending { it.createdAt }
+                val latest = list.firstOrNull()
+                val previous = latest?.let { previousFor(list.drop(1), it.storeName) }
                 TrackedProduct(
                     product = product,
-                    latest = list.firstOrNull(),
-                    deltaWon = if (list.size >= 2) list[0].priceWon - list[1].priceWon else null,
+                    latest = latest,
+                    deltaWon = if (latest != null && previous != null) latest.priceWon - previous.entry.priceWon else null,
+                    deltaOtherStore = previous?.sameStore == false,
                     entryCount = list.size,
                 )
             }
@@ -64,35 +72,49 @@ class PriceRepository(
 
     fun observeEntries(productId: Long): Flow<List<PriceEntryEntity>> = priceDao.observeEntries(productId)
 
+    /** 확인 화면 매장 칩용 최근 매장(최신순 3개). */
+    suspend fun recentStores(): List<String> = priceDao.recentStoreNames(RECENT_STORE_LIMIT)
+
+    /** 오늘 이미 기록한 매장이 있으면 그 매장을 기본 선택한다(같은 장보기 중일 가능성이 높다). */
+    suspend fun defaultStoreForToday(): String? =
+        priceDao.latestEntryOverall()
+            ?.takeIf { it.dateEpochDay == clock.today().toEpochDay() }
+            ?.storeName
+
     /** 사진 한 장을 분석한다(저장 아님). 이미지 저장 실패 시에도 OCR은 시도한다. */
-    suspend fun analyze(uri: Uri): PriceAnalysis {
+    suspend fun analyze(uri: Uri, storeName: String?): PriceAnalysis {
         val imagePath = imageStore.save(uri)
         val ocrText = ocr.extract(uri)
         val tag = extractor.extract(ocrText, imagePath)
 
         val matched = findExisting(tag)
-        val previous = matched?.let { priceDao.latestEntry(it.id) }
 
         return PriceAnalysis(
             imagePath = imagePath,
             ocrText = ocrText,
             tag = tag,
             matchedProduct = matched,
-            previousEntry = previous,
+            previous = matched?.let { previousFor(it.id, storeName) },
         )
     }
 
     /** 사용자가 이름을 수정했을 때 재방문 매칭을 다시 수행한다. */
-    suspend fun requery(analysis: PriceAnalysis, name: String): PriceAnalysis {
+    suspend fun requery(analysis: PriceAnalysis, name: String, storeName: String?): PriceAnalysis {
         val tag = analysis.tag.copy(name = name)
         val matched = findExisting(tag)
-        val previous = matched?.let { priceDao.latestEntry(it.id) }
         return analysis.copy(
             tag = tag,
             matchedProduct = matched,
-            previousEntry = previous,
+            previous = matched?.let { previousFor(it.id, storeName) },
         )
     }
+
+    /** 매장 선택이 바뀌면 비교 대상 기록만 다시 고른다(OCR·매칭은 그대로). */
+    suspend fun withStore(analysis: PriceAnalysis, storeName: String?): PriceAnalysis =
+        analysis.copy(previous = analysis.matchedProduct?.let { previousFor(it.id, storeName) })
+
+    private suspend fun previousFor(productId: Long, storeName: String?): PreviousRecord? =
+        previousFor(priceDao.entriesFor(productId), storeName)
 
     /** 바코드 → 정규화 이름 순으로 기존 상품을 찾는다. */
     private suspend fun findExisting(tag: PriceTagInfo): PriceProductEntity? {
@@ -106,8 +128,10 @@ class PriceRepository(
      * 확인된 분석 결과를 저장한다(상품 upsert + 기록 insert + 캐릭터 성장).
      * @return 저장된 상품 id. 가격이 없으면 null(저장 불가).
      */
-    suspend fun save(analysis: PriceAnalysis, name: String, priceWon: Int): Long? {
+    suspend fun save(analysis: PriceAnalysis, name: String, priceWon: Int, storeName: String?): Long? {
         if (name.isBlank() || priceWon <= 0) return null
+        // 매장은 표기 그대로 저장하되 빈 값은 null. 비교는 normalizeStoreName 기준.
+        val store = storeName?.trim()?.takeIf { normalizeStoreName(it) != null }
         val now = clock.nowMillis()
         val tag = analysis.tag
 
@@ -137,6 +161,7 @@ class PriceRepository(
                 unitBaseAmount = tag.unitBaseAmount,
                 unitBaseUnit = tag.unitBaseUnit,
                 saleEndEpochDay = tag.saleEndEpochDay,
+                storeName = store,
                 imagePath = analysis.imagePath,
                 dateEpochDay = clock.today().toEpochDay(),
                 createdAt = now,
@@ -155,5 +180,9 @@ class PriceRepository(
         priceDao.entriesFor(productId).forEach { it.imagePath?.let(imageStore::delete) }
         priceDao.deleteEntriesFor(productId)
         priceDao.deleteProduct(productId)
+    }
+
+    private companion object {
+        const val RECENT_STORE_LIMIT = 3
     }
 }

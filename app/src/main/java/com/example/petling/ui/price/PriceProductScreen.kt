@@ -154,6 +154,13 @@ private fun EntryCard(entry: PriceEntryEntity, previous: PriceEntryEntity?) {
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
+                entry.storeName?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 entry.naverPriceWon?.let {
                     Text(
                         "당시 네이버 최저가 ${won(it)}",

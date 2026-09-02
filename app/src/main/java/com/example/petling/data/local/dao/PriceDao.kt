@@ -55,4 +55,14 @@ interface PriceDao {
 
     @Query("SELECT * FROM price_entries WHERE productId = :productId")
     suspend fun entriesFor(productId: Long): List<PriceEntryEntity>
+
+    /** 최근 사용 매장(최신 기록순, 빈 값 제외) — 확인 화면 매장 칩. */
+    @Query(
+        "SELECT storeName FROM price_entries WHERE storeName IS NOT NULL AND storeName != '' " +
+            "GROUP BY storeName ORDER BY MAX(createdAt) DESC LIMIT :limit"
+    )
+    suspend fun recentStoreNames(limit: Int): List<String>
+
+    @Query("SELECT * FROM price_entries ORDER BY createdAt DESC LIMIT 1")
+    suspend fun latestEntryOverall(): PriceEntryEntity?
 }

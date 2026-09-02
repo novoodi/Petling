@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -20,6 +21,10 @@ sealed interface AnalysisUi {
         val analysis: PriceAnalysis,
         val name: String,
         val priceText: String,
+        /** 촬영 매장(선택). 빈 문자열이면 매장 없이 기록. */
+        val storeName: String = "",
+        /** 최근 사용 매장 칩 후보. */
+        val recentStores: List<String> = emptyList(),
         val requerying: Boolean = false,
     ) : AnalysisUi
 }
@@ -39,15 +44,34 @@ class PriceViewModel(private val repository: PriceRepository) : ViewModel() {
     /** 저장 연타 방지. */
     private var saving = false
 
+    /** 매장 변경 시 비교 대상 재계산 — 연속 입력이면 이전 계산을 취소해 순서 꼬임을 막는다. */
+    private var storeJob: Job? = null
+
     fun analyze(uri: Uri) {
         _analysis.value = AnalysisUi.Loading
         viewModelScope.launch {
-            val result = repository.analyze(uri)
+            val recentStores = repository.recentStores()
+            val store = repository.defaultStoreForToday().orEmpty()
+            val result = repository.analyze(uri, store.ifBlank { null })
             _analysis.value = AnalysisUi.Ready(
                 analysis = result,
                 name = result.tag.name,
                 priceText = result.tag.priceWon?.toString().orEmpty(),
+                storeName = store,
+                recentStores = recentStores,
             )
+        }
+    }
+
+    fun updateStore(storeName: String) {
+        val current = _analysis.value as? AnalysisUi.Ready ?: return
+        val trimmed = storeName.take(40)
+        _analysis.value = current.copy(storeName = trimmed)
+        storeJob?.cancel()
+        storeJob = viewModelScope.launch {
+            val updated = repository.withStore(current.analysis, trimmed.ifBlank { null })
+            val latest = _analysis.value as? AnalysisUi.Ready ?: return@launch
+            _analysis.value = latest.copy(analysis = updated)
         }
     }
 
@@ -69,7 +93,11 @@ class PriceViewModel(private val repository: PriceRepository) : ViewModel() {
         if (current.requerying || current.name.isBlank()) return
         _analysis.value = current.copy(requerying = true)
         viewModelScope.launch {
-            val updated = repository.requery(current.analysis, current.name.trim())
+            val updated = repository.requery(
+                current.analysis,
+                current.name.trim(),
+                current.storeName.ifBlank { null },
+            )
             val latest = _analysis.value as? AnalysisUi.Ready ?: return@launch
             _analysis.value = latest.copy(analysis = updated, requerying = false)
         }
@@ -85,7 +113,12 @@ class PriceViewModel(private val repository: PriceRepository) : ViewModel() {
         if (saving) return
         saving = true
         viewModelScope.launch {
-            val id = repository.save(current.analysis, current.name.trim(), price)
+            val id = repository.save(
+                current.analysis,
+                current.name.trim(),
+                price,
+                current.storeName.ifBlank { null },
+            )
             saving = false
             if (id != null) {
                 _analysis.value = null

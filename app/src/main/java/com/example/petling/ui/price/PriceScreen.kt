@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -36,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -124,6 +127,7 @@ fun PriceScreen(onOpenProduct: (Long) -> Unit) {
                 onNameChange = vm::updateName,
                 onPriceChange = vm::updatePriceText,
                 onPickCandidate = vm::pickCandidate,
+                onStoreChange = vm::updateStore,
                 onRequery = vm::requery,
                 onSave = vm::save,
                 onCancel = vm::dismissAnalysis,
@@ -203,7 +207,11 @@ private fun TrackedProductCard(item: TrackedProduct, onClick: () -> Unit) {
                     val latest = item.latest
                     if (latest != null) {
                         Text(
-                            "${formatEpochDay(latest.dateEpochDay)} · 기록 ${item.entryCount}회",
+                            listOfNotNull(
+                                formatEpochDay(latest.dateEpochDay),
+                                latest.storeName,
+                                "기록 ${item.entryCount}회",
+                            ).joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -224,6 +232,13 @@ private fun TrackedProductCard(item: TrackedProduct, onClick: () -> Unit) {
                             else -> "변동 없음" to MaterialTheme.colorScheme.onSurfaceVariant
                         }
                         Text(text, style = MaterialTheme.typography.bodySmall, color = color)
+                        if (item.deltaOtherStore) {
+                            Text(
+                                "다른 매장 기준",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -235,6 +250,65 @@ private fun TrackedProductCard(item: TrackedProduct, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+    }
+}
+
+/** 매장 선택: 최근 매장 칩 + 직접 입력. 기록이 없는 첫 사용은 입력창부터 보여준다. */
+@Composable
+private fun StoreSection(
+    storeName: String,
+    recentStores: List<String>,
+    onStoreChange: (String) -> Unit,
+) {
+    val isCustom = storeName.isNotBlank() && storeName !in recentStores
+    var typing by remember(recentStores) { mutableStateOf(isCustom || recentStores.isEmpty()) }
+    val showField = typing || isCustom
+
+    Column {
+        Text("매장", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            recentStores.forEach { store ->
+                FilterChip(
+                    selected = !showField && storeName == store,
+                    onClick = {
+                        typing = false
+                        onStoreChange(if (storeName == store) "" else store)
+                    },
+                    label = { Text(store) },
+                )
+            }
+            FilterChip(
+                selected = showField,
+                onClick = {
+                    typing = true
+                    if (!isCustom) onStoreChange("")
+                },
+                label = { Text(if (recentStores.isEmpty()) "매장 입력" else "직접 입력") },
+            )
+        }
+        if (showField) {
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(
+                value = storeName,
+                onValueChange = onStoreChange,
+                label = { Text("매장 이름") },
+                placeholder = { Text("예: 이마트 성수점") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+        }
+        if (storeName.isBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "매장을 고르면 같은 매장끼리 가격을 비교해요 (선택 사항)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -262,6 +336,7 @@ private fun ResultBody(
     onNameChange: (String) -> Unit,
     onPriceChange: (String) -> Unit,
     onPickCandidate: (Int) -> Unit,
+    onStoreChange: (String) -> Unit,
     onRequery: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
@@ -340,16 +415,35 @@ private fun ResultBody(
             )
         }
 
-        // 재방문: 지난 기록과 비교
-        analysis.previousEntry?.let { prev ->
+        // 매장: 같은 상품도 매장마다 가격이 달라 비교의 축이 된다(위치 권한 없이 수동 선택)
+        StoreSection(
+            storeName = ui.storeName,
+            recentStores = ui.recentStores,
+            onStoreChange = onStoreChange,
+        )
+
+        // 재방문: 지난 기록과 비교(같은 매장 기록 우선)
+        analysis.previous?.let { previous ->
+            val prev = previous.entry
             PetlingCard(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     Text("🔁 전에 기록한 상품이에요", fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "${formatEpochDay(prev.dateEpochDay)}에 ${won(prev.priceWon)}이었어요",
+                        listOfNotNull(
+                            "${formatEpochDay(prev.dateEpochDay)}에 ${won(prev.priceWon)}이었어요",
+                            prev.storeName,
+                        ).joinToString(" · "),
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    if (!previous.sameStore) {
+                        Text(
+                            prev.storeName?.let { "이 매장 기록이 없어 $it 가격과 비교해요" }
+                                ?: "매장 정보가 없는 기록과 비교해요",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     if (priceNow != null) {
                         val delta = priceNow - prev.priceWon
                         val verdict = when {
