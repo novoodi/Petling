@@ -6,7 +6,7 @@
 
 ## 사전 준비 (사용자, 외부 작업)
 1. https://console.firebase.google.com 에서 프로젝트 생성.
-2. Android 앱 추가 — **패키지명은 반드시 `com.petling.app`** (applicationId와 일치).
+2. Android 앱 추가 — **패키지명은 반드시 `com.novoodi.petling`** (applicationId와 일치).
 3. `google-services.json` 다운로드 → `app/google-services.json`에 저장. (이미 `.gitignore`로 커밋 제외됨)
 4. Firebase 콘솔에서 Crashlytics 활성화.
 

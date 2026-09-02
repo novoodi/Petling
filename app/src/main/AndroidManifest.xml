@@ -2,15 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <!-- 스크린샷 자동 감지: 미디어(이미지) 접근 -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!-- 가격표 촬영은 TakePicture 인텐트(카메라 앱 위임)라 CAMERA 권한을 선언하지 않는다.
+         선언하면 오히려 런타임 권한 없이는 인텐트가 SecurityException을 던진다.
+         앨범 선택도 시스템 포토 피커라 미디어 권한이 필요 없다. -->
 
     <!-- Firebase Analytics가 자동 주입하는 광고 ID 권한 제거(광고 없음, 온디바이스 프라이버시 원칙).
          광고 도입 시 아래 3줄을 지우면 다시 포함된다. -->
@@ -44,49 +38,18 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
-            <!-- 다른 앱에서 스크린샷/이미지를 Petling으로 공유 -->
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/*" />
-            </intent-filter>
-
-            <!-- 카톡 공지 등 텍스트를 Petling으로 공유 -->
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
         </activity>
 
-        <receiver
-            android:name=".notifications.ScheduleAlarmReceiver"
-            android:exported="false" />
-
-        <receiver
-            android:name=".notifications.CompleteActionReceiver"
-            android:exported="false" />
-
-        <receiver
-            android:name=".notifications.OrganizeActionReceiver"
-            android:exported="false" />
-
-        <receiver
-            android:name=".notifications.BootCompletedReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.TIME_SET" />
-                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
-            </intent-filter>
-        </receiver>
-
-        <!-- 스크린샷 감지: MediaStore 콘텐츠 트리거 잡 -->
-        <service
-            android:name=".notifications.ScreenshotDetectJobService"
-            android:permission="android.permission.BIND_JOB_SERVICE"
-            android:exported="false" />
+        <!-- 가격표 촬영: 카메라 앱에 임시 저장 위치를 넘기는 FileProvider -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

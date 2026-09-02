@@ -24,11 +24,12 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.petling.app"
+        applicationId = "com.novoodi.petling"
         minSdk = 31
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // 2.0: 마트 가격 추적 앱으로 전면 개편(구 Petling 기능 제거)
+        versionCode = 2
+        versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -92,7 +93,6 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.mlkit.text.recognition.korean)
     implementation(libs.mlkit.genai.prompt)

@@ -73,7 +73,7 @@
 
 **어떻게:** `docs/CRASHLYTICS_SETUP.md`에 5단계로 정리돼 있습니다. 요약:
 1. https://console.firebase.google.com → 프로젝트 생성(무료)
-2. 안드로이드 앱 추가 — **패키지명 `com.petling.app`** (꼭 일치)
+2. 안드로이드 앱 추가 — **패키지명 `com.novoodi.petling`** (꼭 일치)
 3. `google-services.json` 다운로드 → `app/google-services.json`에 저장
 4. 문서의 Gradle 2~3단계대로 플러그인/의존성 추가 (제가 정확한 코드 조각을 문서에 넣어놨습니다 — 그대로 복붙)
 5. Firebase 콘솔에서 Crashlytics 켜기

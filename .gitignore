@@ -23,3 +23,6 @@ google-services.json
 
 # 타 프로젝트 디자인 시스템 임포트(커밋 금지)
 .design-import/
+
+# 빌드 산출물 APK(용량 큼) — 커밋 금지
+*.apk

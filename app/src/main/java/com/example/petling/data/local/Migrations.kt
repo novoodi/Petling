@@ -31,6 +31,65 @@ object Migrations {
         }
     }
 
+    /**
+     * v7→v8: 가격 추적(마트 가격표 촬영 → 온라인/지난 기록 비교).
+     * 신규 테이블 2개(price_products, price_entries) — 기존 데이터 무변경.
+     * SQL은 schemas/8.json(Room 생성 스키마)과 반드시 일치해야 한다.
+     */
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `price_products` (" +
+                    "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`name` TEXT NOT NULL, " +
+                    "`normalizedName` TEXT NOT NULL, " +
+                    "`volumeAmount` REAL, " +
+                    "`volumeUnit` TEXT, " +
+                    "`barcode` TEXT, " +
+                    "`createdAt` INTEGER NOT NULL)"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_price_products_normalizedName` ON `price_products` (`normalizedName`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_price_products_barcode` ON `price_products` (`barcode`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `price_entries` (" +
+                    "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`productId` INTEGER NOT NULL, " +
+                    "`priceWon` INTEGER NOT NULL, " +
+                    "`originalPriceWon` INTEGER, " +
+                    "`unitPriceWon` INTEGER, " +
+                    "`unitBaseAmount` REAL, " +
+                    "`unitBaseUnit` TEXT, " +
+                    "`saleEndEpochDay` INTEGER, " +
+                    "`storeName` TEXT, " +
+                    "`imagePath` TEXT, " +
+                    "`naverPriceWon` INTEGER, " +
+                    "`naverTitle` TEXT, " +
+                    "`naverMall` TEXT, " +
+                    "`naverLink` TEXT, " +
+                    "`dateEpochDay` INTEGER NOT NULL, " +
+                    "`createdAt` INTEGER NOT NULL)"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_price_entries_productId` ON `price_entries` (`productId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_price_entries_createdAt` ON `price_entries` (`createdAt`)")
+        }
+    }
+
+    /**
+     * v8→v9: 가격 추적 단일 앱으로 전면 정리 — 일정·캐릭터·캡처·카테고리 테이블 제거.
+     * 가격 데이터(price_products/price_entries)는 그대로 보존한다.
+     * v6~v8 마이그레이션은 기존 베타 설치 기기(가격 데이터 보유 가능)를 위해 체인으로 유지.
+     */
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("DROP TABLE IF EXISTS `schedules`")
+            db.execSQL("DROP TABLE IF EXISTS `character_state`")
+            db.execSQL("DROP TABLE IF EXISTS `xp_log`")
+            db.execSQL("DROP TABLE IF EXISTS `growth_snapshots`")
+            db.execSQL("DROP TABLE IF EXISTS `captures`")
+            db.execSQL("DROP TABLE IF EXISTS `categories`")
+        }
+    }
+
     /** AppContainer가 databaseBuilder.addMigrations(*Migrations.ALL)로 등록한다. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_6_7)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
 }

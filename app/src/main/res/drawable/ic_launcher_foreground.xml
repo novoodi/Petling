@@ -1,67 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Petling 런처 아이콘 전경: 도토리 캐릭터 "모도리".
-     108x108 뷰포트, 콘텐츠는 안전영역(중앙 원) 안에 배치. -->
+<!-- 마트메모 런처 아이콘 전경: 흰 가격표(구멍 뚫린 태그) + ₩ 글리프.
+     108x108 뷰포트, 콘텐츠는 안전영역(중앙 지름 66 원) 안에 배치. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:scaleX="0.92" android:scaleY="0.92" android:pivotX="54" android:pivotY="54">
+    <group
+        android:rotation="-18"
+        android:scaleX="0.95"
+        android:scaleY="0.95"
+        android:pivotX="54"
+        android:pivotY="54">
 
-        <!-- 몸통(도토리 열매) -->
-        <path
-            android:fillColor="#EA8B47"
-            android:pathData="M33,47 C33,45.5 75,45.5 75,47 C77.5,63 68,88 54,88 C40,88 30.5,63 33,47 Z" />
-        <!-- 몸통 아래쪽 살짝 진한 음영 -->
-        <path
-            android:fillColor="#33000000"
-            android:pathData="M37,74 C42,84 66,84 71,74 C66,86 42,86 37,74 Z" />
-
-        <!-- 줄기(꼭지) -->
-        <path
-            android:fillColor="#5F3A22"
-            android:pathData="M51.5,29 L51.5,22.5 C51.5,19.5 56.5,19.5 56.5,22.5 L56.5,29 Z" />
-
-        <!-- 깍정이(도토리 모자) -->
-        <path
-            android:fillColor="#7A4A2C"
-            android:pathData="M29,48 C29,33 43,27 54,27 C65,27 79,33 79,48 C79,49.6 29,49.6 29,48 Z" />
-        <!-- 모자 밑단 하이라이트 -->
-        <path
-            android:fillColor="#8C5836"
-            android:pathData="M29,47 C29,45 79,45 79,47 C79,49.4 29,49.4 29,47 Z" />
-
-        <!-- 왼쪽 볼(홍조) -->
-        <path
-            android:fillColor="#66E8805A"
-            android:pathData="M37.8,68 a3.2,3.2 0 1,0 6.4,0 a3.2,3.2 0 1,0 -6.4,0 z" />
-        <!-- 오른쪽 볼 -->
-        <path
-            android:fillColor="#66E8805A"
-            android:pathData="M63.8,68 a3.2,3.2 0 1,0 6.4,0 a3.2,3.2 0 1,0 -6.4,0 z" />
-
-        <!-- 왼쪽 눈 -->
-        <path
-            android:fillColor="#3B2A1F"
-            android:pathData="M43,61 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 z" />
-        <!-- 오른쪽 눈 -->
-        <path
-            android:fillColor="#3B2A1F"
-            android:pathData="M57,61 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 z" />
-        <!-- 눈 반짝임 -->
+        <!-- 태그 몸체(왼쪽 뾰족 + 오른쪽 라운드) — evenOdd로 끈 구멍 관통 -->
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M46.9,59.4 a1.4,1.4 0 1,0 2.8,0 a1.4,1.4 0 1,0 -2.8,0 z" />
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M60.9,59.4 a1.4,1.4 0 1,0 2.8,0 a1.4,1.4 0 1,0 -2.8,0 z" />
+            android:fillType="evenOdd"
+            android:pathData="M42,37 L77,37 Q83,37 83,43 L83,65 Q83,71 77,71 L42,71 L25,54 Z
+                M32,54 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 Z" />
 
-        <!-- 입(미소) -->
+        <!-- ₩ : W 획 -->
         <path
-            android:strokeColor="#5F3A22"
-            android:strokeWidth="2"
+            android:strokeColor="#DE6A2C"
+            android:strokeWidth="3.8"
             android:strokeLineCap="round"
-            android:fillColor="#00000000"
-            android:pathData="M50,68 Q54,72 58,68" />
+            android:strokeLineJoin="round"
+            android:pathData="M51,46 L55.5,62 L60,49.5 L64.5,62 L69,46" />
+        <!-- ₩ : 가로 이중선 -->
+        <path
+            android:strokeColor="#DE6A2C"
+            android:strokeWidth="3"
+            android:strokeLineCap="round"
+            android:pathData="M48.5,51 L71.5,51 M48.5,56.5 L71.5,56.5" />
     </group>
 </vector>

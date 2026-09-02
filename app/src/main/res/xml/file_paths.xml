@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 가격표 촬영용 임시 파일(cacheDir/price)만 노출한다. -->
+<paths>
+    <cache-path
+        name="price_shots"
+        path="price/" />
+</paths>
