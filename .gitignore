@@ -26,3 +26,6 @@ google-services.json
 
 # 빌드 산출물 APK(용량 큼) — 커밋 금지
 *.apk
+
+# Kotlin 컴파일러 세션 파일(빌드 산출물)
+.kotlin/
