@@ -43,6 +43,7 @@ import com.example.petling.data.local.entity.PriceEntryEntity
 import com.example.petling.data.local.entity.PriceProductEntity
 import com.example.petling.data.market.MarketRepository
 import com.example.petling.data.repository.PriceRepository
+import com.example.petling.domain.price.NanoNameGuard
 import com.example.petling.ui.appContainer
 import com.example.petling.ui.components.PetlingCard
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -133,7 +134,7 @@ fun PriceProductScreen(productId: Long, onBack: () -> Unit) {
             item {
                 val p = product
                 if (p != null) {
-                    val volume = p.volumeAmount?.let { amt ->
+                    val volume = p.volumeAmount?.takeIf { !NanoNameGuard.containsVolume(p.name) }?.let { amt ->
                         val text = if (amt % 1.0 == 0.0) amt.toLong().toString() else amt.toString()
                         "$text${p.volumeUnit.orEmpty()}"
                     }

@@ -19,12 +19,13 @@ import com.example.petling.data.price.NanoState
 
 /**
  * 온디바이스 AI 안내의 단일 출처 — 첫 실행 대화상자와 설정 카드가 같은 문구를 쓴다.
- * 지원 기종은 ML Kit GenAI Prompt API 문서 기준(2026-09 확인). 갤럭시 S25·Z Fold6 이하는 미지원.
+ * 지원 기종 공식 목록은 ML Kit GenAI Prompt API 문서(2026-09) 기준이나, 실기기 QA에서 목록에 없는 Z Fold6가
+ * AVAILABLE로 동작했다 → 목록은 참고로만 쓰고 checkStatus 결과를 정답으로 안내한다.
  */
 object OnDeviceAiTexts {
     const val SUPPORTED_DEVICES =
-        "지원 기종 — 갤럭시: Z Fold7, Z Fold8·Z Flip8, S26 시리즈 · 픽셀: 9, 10, 11 시리즈 " +
-            "(갤럭시 S25·Z Fold6 이하는 미지원)"
+        "이 휴대폰의 지원 여부는 위 상태 표시가 정답이에요. 구글 공식 목록은 갤럭시 Z Fold7 이후·S26 시리즈, " +
+            "픽셀 9 이후이지만, 목록에 없어도 AI 기능이 업데이트된 기기(예: Z Fold6)는 되는 경우가 있어요."
 
     const val FALLBACK =
         "AI가 없어도 가격표는 읽어요. 사진의 글자를 인식해 상품명과 가격을 규칙으로 뽑고, " +

@@ -55,6 +55,7 @@ import com.example.petling.data.market.MarketInsight
 import com.example.petling.data.market.MarketRepository
 import com.example.petling.data.price.NanoState
 import com.example.petling.data.repository.TrackedProduct
+import com.example.petling.domain.price.NanoNameGuard
 import com.example.petling.ui.ActionIntents
 import com.example.petling.ui.appContainer
 import com.example.petling.ui.components.OnDeviceAiIntroDialog
@@ -235,7 +236,8 @@ private fun TrackedProductCard(item: TrackedProduct, onClick: () -> Unit) {
     PetlingCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    val volume = item.product.volumeAmount?.let { amt ->
+                    // 이름에 이미 "840g"이 들어 있으면 용량을 덧붙이지 않는다(QA: "…840g 840g")
+                    val volume = item.product.volumeAmount?.takeIf { !NanoNameGuard.containsVolume(item.product.name) }?.let { amt ->
                         val text = if (amt % 1.0 == 0.0) amt.toLong().toString() else amt.toString()
                         " $text${item.product.volumeUnit.orEmpty()}"
                     }.orEmpty()

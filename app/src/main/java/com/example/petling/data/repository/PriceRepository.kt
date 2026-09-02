@@ -10,6 +10,7 @@ import com.example.petling.data.market.MarketInsight
 import com.example.petling.data.market.MarketRepository
 import com.example.petling.domain.AppClock
 import com.example.petling.domain.price.PriceTagExtractor
+import com.example.petling.domain.price.NanoNameGuard
 import com.example.petling.domain.price.PreviousRecord
 import com.example.petling.domain.price.PriceTagInfo
 import com.example.petling.domain.price.normalizeProductName
@@ -168,7 +169,9 @@ class PriceRepository(
      * 확인된 분석 결과를 저장한다(상품 upsert + 기록 insert + 캐릭터 성장).
      * @return 저장된 상품 id. 가격이 없으면 null(저장 불가).
      */
-    suspend fun save(analysis: PriceAnalysis, name: String, priceWon: Int, storeName: String?): Long? {
+    suspend fun save(analysis: PriceAnalysis, rawName: String, priceWon: Int, storeName: String?): Long? {
+        // 용량은 별도 필드(volumeAmount)로 기록하므로 이름에 붙은 "840g"은 뗀다. 전부 용량이면 원문 유지.
+        val name = NanoNameGuard.stripVolumeTokens(rawName).ifBlank { rawName.trim() }
         if (name.isBlank() || priceWon <= 0) return null
         // 매장은 표기 그대로 저장하되 빈 값은 null. 비교는 normalizeStoreName 기준.
         val store = storeName?.trim()?.takeIf { normalizeStoreName(it) != null }

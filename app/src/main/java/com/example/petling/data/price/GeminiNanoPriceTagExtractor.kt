@@ -3,6 +3,7 @@ package com.example.petling.data.price
 import android.graphics.BitmapFactory
 import com.example.petling.data.capture.NanoLog
 import com.example.petling.data.capture.generateOrNull
+import com.example.petling.domain.price.NanoNameGuard
 import com.example.petling.domain.price.PriceTagExtractor
 import com.example.petling.domain.price.PriceTagInfo
 import com.example.petling.domain.price.RuleBasedPriceTagExtractor
@@ -155,18 +156,22 @@ class GeminiNanoPriceTagExtractor(
             return ruleInfo
         }
 
-        val nanoName = parseField(answer, "상품명")
+        // 프롬프트가 용량을 빼라고 해도 붙여 오는 경우가 있어 여기서 한 번 더 뗀다
+        val nanoName = parseField(answer, "상품명")?.let { NanoNameGuard.stripVolumeTokens(it) }?.takeIf { it.isNotBlank() }
         val nanoPrice = parseField(answer, "가격")
             ?.filter { it.isDigit() }
             ?.toIntOrNull()
 
-        // 상품명: OCR 텍스트와 한 토큰이라도 겹칠 때만 채택(환각 차단).
+        // 상품명: 한글 2자 이상 토큰이 OCR 텍스트에 있을 때만 채택(환각·오독 차단 — 숫자·용량 토큰은 증거가 아님).
         // 규칙이 이름을 못 뽑았을 땐 Nano 답을 그대로 쓴다(이미지에서 읽었을 수 있음).
         val name = when {
             nanoName.isNullOrBlank() -> ruleInfo.name
             ruleInfo.name.isBlank() -> nanoName
-            overlapsOcr(nanoName, ocrText) -> nanoName
-            else -> ruleInfo.name
+            NanoNameGuard.isSupportedByOcr(nanoName, ocrText) -> nanoName
+            else -> {
+                NanoLog.d("price", "name_rejected")
+                ruleInfo.name
+            }
         }
 
         // 가격: 규칙이 확정했다면 그대로. 미확정일 때만 Nano가 고른 값이
@@ -207,9 +212,6 @@ class GeminiNanoPriceTagExtractor(
             ?.substringAfter(":")
             ?.trim(' ', '"', '\'')
             ?.takeIf { it.isNotBlank() }
-
-    private fun overlapsOcr(name: String, ocrText: String): Boolean =
-        name.split(' ').any { it.length >= 2 && ocrText.contains(it) }
 
     private fun loadDownscaled(path: String): android.graphics.Bitmap? = runCatching {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
