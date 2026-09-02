@@ -29,3 +29,4 @@ google-services.json
 
 # Kotlin 컴파일러 세션 파일(빌드 산출물)
 .kotlin/
+*.aab
