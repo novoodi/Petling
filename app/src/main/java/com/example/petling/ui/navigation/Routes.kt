@@ -8,4 +8,9 @@ import kotlinx.serialization.Serializable
 
 @Serializable data class PriceProductRoute(val productId: Long)
 
+/** 시세 탭: 참가격 상품 검색. */
+@Serializable object MarketRoute
+
+@Serializable data class MarketProductRoute(val goodId: Long)
+
 @Serializable object SettingsRoute

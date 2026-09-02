@@ -48,6 +48,16 @@ interface MarketDao {
     @Query("SELECT MAX(day) FROM market_medians")
     suspend fun latestDay(): String?
 
+    /** 시세 검색: 이름 부분 일치(공백 제거 이름도 함께). */
+    @Query(
+        "SELECT * FROM market_products WHERE name LIKE '%' || :query || '%' " +
+            "OR normalizedName LIKE '%' || :normalized || '%' ORDER BY name LIMIT :limit"
+    )
+    suspend fun searchProducts(query: String, normalized: String, limit: Int): List<MarketProductEntity>
+
+    @Query("SELECT * FROM market_medians WHERE day = (SELECT MAX(day) FROM market_medians)")
+    suspend fun latestMedians(): List<MarketMedianEntity>
+
     /** 매장 직접 입력 자동완성: 참가격 판매점 이름 부분 일치. */
     @Query("SELECT name FROM market_stores WHERE name LIKE '%' || :query || '%' ORDER BY name LIMIT :limit")
     suspend fun searchStoreNames(query: String, limit: Int): List<String>

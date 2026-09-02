@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -25,6 +26,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.example.petling.ui.market.MarketProductScreen
+import com.example.petling.ui.market.MarketSearchScreen
 import com.example.petling.ui.price.PriceProductScreen
 import com.example.petling.ui.price.PriceScreen
 import com.example.petling.ui.settings.SettingsScreen
@@ -37,7 +40,7 @@ fun PetlingNavHost(navController: NavHostController = rememberNavController()) {
     val currentDest = backStack?.destination
 
     val showBottomBar = currentDest?.let {
-        it.hasRoute(PriceRoute::class) || it.hasRoute(SettingsRoute::class)
+        it.hasRoute(PriceRoute::class) || it.hasRoute(MarketRoute::class) || it.hasRoute(SettingsRoute::class)
     } ?: false
 
     Scaffold(
@@ -45,6 +48,7 @@ fun PetlingNavHost(navController: NavHostController = rememberNavController()) {
             if (showBottomBar) {
                 NavigationBar(modifier = Modifier.height(Dimens.NavBarHeight + Dimens.Space10)) {
                     tabItem(currentDest, PriceRoute, Icons.Filled.Sell, "가격") { navigateTab(navController, PriceRoute) }
+                    tabItem(currentDest, MarketRoute, Icons.Filled.Search, "시세") { navigateTab(navController, MarketRoute) }
                     tabItem(currentDest, SettingsRoute, Icons.Filled.Settings, "설정") { navigateTab(navController, SettingsRoute) }
                 }
             }
@@ -66,6 +70,13 @@ fun PetlingNavHost(navController: NavHostController = rememberNavController()) {
                     productId = route.productId,
                     onBack = { navController.popBackStack() },
                 )
+            }
+            composable<MarketRoute> {
+                MarketSearchScreen(onOpenProduct = { navController.navigate(MarketProductRoute(it)) })
+            }
+            composable<MarketProductRoute> { entry ->
+                val route = entry.toRoute<MarketProductRoute>()
+                MarketProductScreen(goodId = route.goodId, onBack = { navController.popBackStack() })
             }
             composable<SettingsRoute> { SettingsScreen() }
         }

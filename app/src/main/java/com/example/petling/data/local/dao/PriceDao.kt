@@ -69,6 +69,13 @@ interface PriceDao {
     @Query("UPDATE price_products SET marketGoodId = :goodId WHERE id = :productId")
     suspend fun setMarketGoodId(productId: Long, goodId: Long?)
 
+    /** 참가격 상품 하나에 매핑된 내 기록 전부(추이 차트의 점). */
+    @Query(
+        "SELECT e.* FROM price_entries e JOIN price_products p ON p.id = e.productId " +
+            "WHERE p.marketGoodId = :goodId ORDER BY e.dateEpochDay"
+    )
+    fun observeEntriesForMarketGood(goodId: Long): Flow<List<PriceEntryEntity>>
+
     // ── 백업(내보내기/가져오기) 전용 스냅샷 조회
     @Query("SELECT * FROM price_products ORDER BY id")
     suspend fun allProducts(): List<PriceProductEntity>

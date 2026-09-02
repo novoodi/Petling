@@ -177,6 +177,22 @@ class MarketRepository(
     /** 상품 상세용: 저장된 매핑의 중앙값 이력. */
     fun observeMedians(goodId: Long) = marketDao.observeMedians(goodId)
 
+    /** 시세 상세용: 이 참가격 상품에 매핑된 내 기록. */
+    fun observeMyEntries(goodId: Long) = priceDao.observeEntriesForMarketGood(goodId)
+
+    /** 시세 검색: 이름 부분 일치 + 최신 조사일의 전체/대형마트 중앙값. */
+    suspend fun search(query: String, limit: Int = 40): List<MarketSearchItem> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        val products = marketDao.searchProducts(q, MarketMatcher.normalize(q), limit)
+        if (products.isEmpty()) return emptyList()
+        val latest = marketDao.latestMedians().groupBy { it.goodId }
+        return products.map { p ->
+            val byType = latest[p.id].orEmpty().associate { it.type to it.priceWon }
+            MarketSearchItem(p, latestAll = byType["ALL"], latestLM = byType["LM"])
+        }
+    }
+
     suspend fun product(goodId: Long): MarketProductEntity? = marketDao.product(goodId)
 
     /** 사용자가 확인한 매핑을 상품에 기억시켜 다음부턴 자동으로 붙인다. */
@@ -252,6 +268,13 @@ class MarketRepository(
         val TYPE_LABELS = mapOf("LM" to "대형마트", "SM" to "SSM", "DP" to "백화점", "CS" to "편의점", "ALL" to "전체")
     }
 }
+
+/** 시세 검색 결과 한 줄. */
+data class MarketSearchItem(
+    val product: MarketProductEntity,
+    val latestAll: Int?,
+    val latestLM: Int?,
+)
 
 /** 확인 화면 "시장 가격" 카드 내용. */
 data class MarketInsight(
