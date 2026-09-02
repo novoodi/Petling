@@ -30,8 +30,9 @@ android {
         // 2.0: 마트 가격 추적 앱으로 전면 개편(구 Petling 기능 제거)
         // 2.1: 매장 기록, JSON 백업, 온디바이스 AI 안내·다운로드 버튼
         // 2.2: 시장 가격 비교(한국소비자원 참가격 게시본 수신·매칭·카드)
-        versionCode = 4
-        versionName = "2.2"
+        // 2.3: 폴드6 QA 수정 — Nano 이름 가드 강화, 용량 중복 표시, AI 지원 기종 문구
+        versionCode = 5
+        versionName = "2.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
