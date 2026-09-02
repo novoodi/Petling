@@ -31,8 +31,9 @@ android {
         // 2.1: 매장 기록, JSON 백업, 온디바이스 AI 안내·다운로드 버튼
         // 2.2: 시장 가격 비교(한국소비자원 참가격 게시본 수신·매칭·카드)
         // 2.3: 폴드6 QA 수정 — Nano 이름 가드 강화, 용량 중복 표시, AI 지원 기종 문구
-        versionCode = 5
-        versionName = "2.3"
+        // 2.4: 시세 탭 — 참가격 상품 검색 + 업태별 중앙값 + 추이 차트(내 기록 점 겹침)
+        versionCode = 6
+        versionName = "2.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
