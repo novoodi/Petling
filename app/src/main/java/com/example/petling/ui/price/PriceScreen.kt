@@ -1,5 +1,6 @@
 ﻿package com.example.petling.ui.price
 
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -50,10 +51,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.petling.data.price.NanoState
 import com.example.petling.data.repository.TrackedProduct
 import com.example.petling.ui.ActionIntents
 import com.example.petling.ui.appContainer
+import com.example.petling.ui.components.OnDeviceAiIntroDialog
 import com.example.petling.ui.components.PetlingCard
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
@@ -61,6 +65,11 @@ import java.time.format.DateTimeFormatter
 
 /** 원화 표기. */
 internal fun won(value: Int): String = "%,d원".format(value)
+
+private const val PREFS_NAME = "martmemo"
+private const val PREF_AI_INTRO_SEEN = "ai_intro_seen"
+/** AICore 상태 확인을 이만큼 기다린 뒤엔 확인 중 문구로라도 안내를 띄운다. */
+private const val INTRO_WAIT_MS = 4_000L
 
 internal fun formatEpochDay(epochDay: Long): String =
     LocalDate.ofEpochDay(epochDay).format(DateTimeFormatter.ofPattern("M/d"))
@@ -81,6 +90,29 @@ fun PriceScreen(onOpenProduct: (Long) -> Unit) {
     val tracked by vm.tracked.collectAsStateWithLifecycle()
     val analysis by vm.analysis.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
+
+    // 첫 실행 안내: 이 폰이 AI 지원인지 / 아니면 어떻게 동작하는지 먼저 알려준다(1회).
+    // AICore 응답이 늦으면 기다리다가 일정 시간 후 "확인 중" 문구로라도 띄운다.
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    var showIntro by remember { mutableStateOf(!prefs.getBoolean(PREF_AI_INTRO_SEEN, false)) }
+    val nanoState by container.priceTagExtractor.state.collectAsStateWithLifecycle()
+    var introWaitOver by remember { mutableStateOf(false) }
+    LaunchedEffect(showIntro) {
+        if (showIntro) {
+            delay(INTRO_WAIT_MS)
+            introWaitOver = true
+        }
+    }
+    if (showIntro && (nanoState !is NanoState.Checking || introWaitOver)) {
+        OnDeviceAiIntroDialog(
+            state = nanoState,
+            onDownload = { container.priceTagExtractor.download() },
+            onDismiss = {
+                prefs.edit().putBoolean(PREF_AI_INTRO_SEEN, true).apply()
+                showIntro = false
+            },
+        )
+    }
 
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()

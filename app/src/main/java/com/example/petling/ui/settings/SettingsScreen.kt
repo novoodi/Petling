@@ -20,9 +20,9 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -31,12 +31,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.petling.BuildConfig
 import com.example.petling.data.backup.BackupFormatException
 import com.example.petling.ui.ActionIntents
 import com.example.petling.ui.appContainer
+import com.example.petling.ui.components.OnDeviceAiCard
 import com.example.petling.ui.components.PetlingCard
-import com.google.mlkit.genai.common.FeatureStatus
 import kotlinx.coroutines.launch
 
 private const val PRIVACY_POLICY_URL =
@@ -47,14 +48,10 @@ fun SettingsScreen() {
     val container = appContainer()
     val context = LocalContext.current
 
-    // AI(Gemini Nano) 지원 상태 — 미지원이어도 규칙 인식으로 동작함을 안내
-    val aiStatus by produceState(initialValue = "확인 중…") {
-        value = when (container.priceTagExtractor.availability()) {
-            FeatureStatus.AVAILABLE -> "사용 가능 — 가격표를 AI가 함께 읽어요"
-            FeatureStatus.DOWNLOADING, FeatureStatus.DOWNLOADABLE -> "모델 준비 중 — 그동안 기본 인식으로 동작해요"
-            else -> "이 기기는 미지원 — 기본 인식으로 동작해요"
-        }
-    }
+    // AI(Gemini Nano) 상태 — 화면에 들어올 때마다 AICore에 다시 묻는다(시스템 업데이트로 바뀔 수 있음)
+    val nano = container.priceTagExtractor
+    val nanoState by nano.state.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { nano.refresh() }
 
     // 백업: 시스템 파일 선택기(CreateDocument/OpenDocument) → 저장소 권한 불필요
     val scope = rememberCoroutineScope()
@@ -131,15 +128,11 @@ fun SettingsScreen() {
             }
         }
 
-        PetlingCard(modifier = Modifier.fillMaxWidth()) {
-            Text("온디바이스 AI", fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                aiStatus,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        OnDeviceAiCard(
+            state = nanoState,
+            onDownload = { nano.download() },
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         PetlingCard(modifier = Modifier.fillMaxWidth()) {
             Text("개인정보", fontWeight = FontWeight.SemiBold)

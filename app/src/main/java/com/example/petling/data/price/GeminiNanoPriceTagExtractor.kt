@@ -6,13 +6,43 @@ import com.example.petling.data.capture.generateOrNull
 import com.example.petling.domain.price.PriceTagExtractor
 import com.example.petling.domain.price.PriceTagInfo
 import com.example.petling.domain.price.RuleBasedPriceTagExtractor
+import com.google.mlkit.genai.common.DownloadStatus
 import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.prompt.GenerateContentRequest
 import com.google.mlkit.genai.prompt.Generation
 import com.google.mlkit.genai.prompt.GenerativeModel
 import com.google.mlkit.genai.prompt.ImagePart
 import com.google.mlkit.genai.prompt.TextPart
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+/**
+ * 온디바이스 AI(Gemini Nano) 준비 상태. 설정 화면·첫 실행 안내가 그대로 표시한다.
+ * 모델 파일은 AICore(시스템 서비스)가 관리하며 앱은 다운로드를 "요청"만 할 수 있다.
+ */
+sealed interface NanoState {
+    /** AICore에 아직 물어보는 중(앱 시작 직후). */
+    data object Checking : NanoState
+    /** 이 기기는 미지원 — 규칙 인식만으로 동작. */
+    data object Unavailable : NanoState
+    /** 지원 기기이나 모델을 아직 받지 않음. */
+    data object Downloadable : NanoState
+    /** 받는 중. [totalBytes]는 AICore가 알려주기 전엔 null. */
+    data class Downloading(val downloadedBytes: Long, val totalBytes: Long?) : NanoState
+    /** 다운로드 실패 — 사용자가 다시 시도할 수 있다. */
+    data class Failed(val reason: String?) : NanoState
+    /** 모델 준비 완료. */
+    data object Available : NanoState
+
+    val isReady: Boolean get() = this is Available
+    val isSupported: Boolean get() = this !is Unavailable && this !is Checking
+}
 
 /**
  * 규칙 추출 + Nano 멀티모달 보정.
@@ -28,24 +58,76 @@ class GeminiNanoPriceTagExtractor(
 ) : PriceTagExtractor {
 
     private val model: GenerativeModel by lazy { Generation.getClient() }
-    private val downloadScope = kotlinx.coroutines.CoroutineScope(
-        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
-    )
-    @Volatile private var downloadStarted = false
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** 설정 화면용 지원 상태. FeatureStatus 상수(0~3), 실패 시 UNAVAILABLE. */
-    suspend fun availability(): Int =
-        runCatching { model.checkStatus() }.getOrDefault(FeatureStatus.UNAVAILABLE)
+    private val _state = MutableStateFlow<NanoState>(NanoState.Checking)
+    /** 설정·첫 실행 안내용 상태. 다운로드 진행률까지 흘러온다. */
+    val state: StateFlow<NanoState> = _state.asStateFlow()
 
-    /** 앱 시작 시: 다운로드 가능 상태면 모델을 미리 받아 첫 가격표부터 Nano 보정이 되게 한다. */
+    private var downloadJob: Job? = null
+
+    /** AICore에 현재 상태를 다시 묻는다. 다운로드 중이면 진행률 스트림을 덮어쓰지 않는다. */
+    suspend fun refresh(): NanoState {
+        val status = runCatching { model.checkStatus() }.getOrNull()
+        val current = _state.value
+        val next = when (status) {
+            FeatureStatus.AVAILABLE -> NanoState.Available
+            FeatureStatus.DOWNLOADABLE -> NanoState.Downloadable
+            FeatureStatus.DOWNLOADING ->
+                if (current is NanoState.Downloading) current else NanoState.Downloading(0L, null)
+            else -> NanoState.Unavailable
+        }
+        // 활성 다운로드 잡이 진행률을 쓰고 있으면 폴링 결과로 덮어쓰지 않는다
+        if (downloadJob?.isActive == true && next !is NanoState.Available) return current
+        _state.value = next
+        return next
+    }
+
+    /**
+     * 모델 다운로드를 요청한다(지원 기기에서만 의미 있음). AICore가 Wi-Fi·저장공간 조건을 판단하므로
+     * 요청 즉시 받지 않을 수도 있다 — 그 경우 상태는 Downloading(0)에 머문다.
+     * @return 요청을 걸었으면 true, 이미 진행 중이거나 지원 상태가 아니면 false.
+     */
+    fun download(): Boolean {
+        if (downloadJob?.isActive == true) return false
+        val current = _state.value
+        if (current !is NanoState.Downloadable && current !is NanoState.Downloading && current !is NanoState.Failed) return false
+        _state.value = NanoState.Downloading(0L, null)
+        downloadJob = scope.launch {
+            var total: Long? = null
+            runCatching {
+                model.download().collect { status ->
+                    when (status) {
+                        is DownloadStatus.DownloadStarted -> {
+                            total = status.bytesToDownload.takeIf { it > 0 }
+                            _state.value = NanoState.Downloading(0L, total)
+                        }
+                        is DownloadStatus.DownloadProgress ->
+                            _state.value = NanoState.Downloading(status.totalBytesDownloaded, total)
+                        is DownloadStatus.DownloadCompleted -> _state.value = NanoState.Available
+                        is DownloadStatus.DownloadFailed -> {
+                            NanoLog.d("price", "dl_fail", status.e.message ?: "")
+                            _state.value = NanoState.Failed(status.e.message)
+                        }
+                    }
+                }
+            }.onFailure {
+                NanoLog.d("price", "dl_fail", it.message ?: "")
+                _state.value = NanoState.Failed(it.message)
+            }.onSuccess {
+                NanoLog.d("price", "dl_ok")
+                // 완료 이벤트 없이 스트림이 끝난 경우를 대비해 실제 상태를 한 번 더 확인
+                if (_state.value !is NanoState.Available && _state.value !is NanoState.Failed) refresh()
+            }
+        }
+        return true
+    }
+
+    /** 앱 시작 시: 상태를 확인하고 받을 수 있으면 미리 받아 첫 가격표부터 Nano 보정이 되게 한다. */
     suspend fun prewarm() {
-        if (runCatching { model.checkStatus() }.getOrNull() != FeatureStatus.DOWNLOADABLE) return
-        if (downloadStarted) return
-        downloadStarted = true
-        downloadScope.launch {
-            runCatching { model.download().collect {} }
-                .onSuccess { NanoLog.d("price", "dl_ok") }
-                .onFailure { NanoLog.d("price", "dl_fail") }
+        when (refresh()) {
+            NanoState.Downloadable, is NanoState.Downloading -> download()
+            else -> Unit
         }
     }
 
@@ -53,11 +135,11 @@ class GeminiNanoPriceTagExtractor(
         val ruleInfo = rules.extract(ocrText, imagePath)
         if (imagePath == null || ocrText.isBlank()) return ruleInfo
 
-        val status = runCatching { model.checkStatus() }.getOrNull()
-        if (status != FeatureStatus.AVAILABLE) {
+        val status = refresh()
+        if (status !is NanoState.Available) {
             NanoLog.d("price", "status_skip", "status=$status")
             // 앱 시작 시 prewarm이 놓친 경우(AICore 초기화 지연 등) 여기서 다시 다운로드를 건다.
-            if (status == FeatureStatus.DOWNLOADABLE) prewarm()
+            if (status is NanoState.Downloadable) download()
             return ruleInfo
         }
 
