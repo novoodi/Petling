@@ -33,8 +33,9 @@ android {
         // 2.3: 폴드6 QA 수정 — Nano 이름 가드 강화, 용량 중복 표시, AI 지원 기종 문구
         // 2.4: 시세 탭 — 참가격 상품 검색 + 업태별 중앙값 + 추이 차트(내 기록 점 겹침)
         // 2.5: 홈 "이번 조사 시장 물가" 카드, 시세 탭 내린/오른 상품, 베타 측정 이벤트
-        versionCode = 7
-        versionName = "2.5"
+        // 2.6: 영수증 한 장 스캔(매장·날짜·상품 N개 한 번에 기록)
+        versionCode = 8
+        versionName = "2.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
