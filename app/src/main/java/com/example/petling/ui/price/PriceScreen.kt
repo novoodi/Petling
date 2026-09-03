@@ -22,7 +22,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
@@ -136,15 +139,22 @@ fun PriceScreen(onOpenProduct: (Long) -> Unit, onOpenMarket: () -> Unit, onOpenM
 
     // 카메라 촬영: 캐시에 임시 파일 → FileProvider Uri → 성공 시 분석
     val cameraUri = remember { mutableStateOf<Uri?>(null) }
+    // 같은 카메라/앨범 런처를 가격표·영수증이 나눠 쓴다. 어느 쪽인지는 실행 직전에 기억해 둔다.
+    val receiptMode = remember { mutableStateOf(false) }
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val uri = cameraUri.value
-        if (ok && uri != null) vm.analyze(uri)
+        if (ok && uri != null) {
+            if (receiptMode.value) vm.analyzeReceipt(uri, source = "camera") else vm.analyze(uri)
+        }
     }
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) vm.analyze(uri, source = "album")
+        if (uri != null) {
+            if (receiptMode.value) vm.analyzeReceipt(uri, source = "album") else vm.analyze(uri, source = "album")
+        }
     }
 
-    fun launchCamera() {
+    fun launchCamera(receipt: Boolean = false) {
+        receiptMode.value = receipt
         runCatching {
             val dir = File(context.cacheDir, "price").apply { mkdirs() }
             val file = File(dir, "shot_${System.currentTimeMillis()}.jpg")
@@ -152,6 +162,27 @@ fun PriceScreen(onOpenProduct: (Long) -> Unit, onOpenMarket: () -> Unit, onOpenM
             cameraUri.value = uri
             cameraLauncher.launch(uri)
         }
+    }
+    fun launchPick(receipt: Boolean = false) {
+        receiptMode.value = receipt
+        pickLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
+
+    var receiptChooser by remember { mutableStateOf(false) }
+    if (receiptChooser) {
+        AlertDialog(
+            onDismissRequest = { receiptChooser = false },
+            title = { Text("영수증으로 한 번에 기록") },
+            text = {
+                Text(
+                    "영수증 한 장을 찍으면 매장·날짜·상품 가격이 한꺼번에 기록돼요. " +
+                        "영수증 사진은 저장하지 않고, 카드·결제 정보는 읽지 않아요.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = { TextButton(onClick = { receiptChooser = false; launchCamera(receipt = true) }) { Text("📷 촬영") } },
+            dismissButton = { TextButton(onClick = { receiptChooser = false; launchPick(receipt = true) }) { Text("앨범에서 선택") } },
+        )
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -165,12 +196,18 @@ fun PriceScreen(onOpenProduct: (Long) -> Unit, onOpenMarket: () -> Unit, onOpenM
                     onOpenMarketProduct(it)
                 },
                 onCamera = { launchCamera() },
-                onPick = {
-                    pickLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
+                onPick = { launchPick() },
+                onReceipt = { receiptChooser = true },
                 onOpenProduct = onOpenProduct,
             )
             AnalysisUi.Loading -> AnalyzingBody()
+            is AnalysisUi.ReceiptReady -> ReceiptBody(
+                ui = a,
+                onRowChange = vm::updateReceiptRow,
+                onStoreChange = vm::updateReceiptStore,
+                onSave = vm::saveReceipt,
+                onCancel = vm::dismissAnalysis,
+            )
             is AnalysisUi.Ready -> ResultBody(
                 ui = a,
                 onNameChange = vm::updateName,
@@ -198,6 +235,7 @@ private fun TrackedList(
     onOpenMarketProduct: (Long) -> Unit,
     onCamera: () -> Unit,
     onPick: () -> Unit,
+    onReceipt: () -> Unit,
     onOpenProduct: (Long) -> Unit,
 ) {
     LazyColumn(
@@ -221,6 +259,11 @@ private fun TrackedList(
                 FilledTonalButton(onClick = onPick, modifier = Modifier.weight(1f)) {
                     Text("앨범에서 선택")
                 }
+            }
+            Spacer(Modifier.height(8.dp))
+            // 기록 비용을 20번→1번으로: 영수증 한 장으로 장보기 전체를 기록
+            OutlinedButton(onClick = onReceipt, modifier = Modifier.fillMaxWidth()) {
+                Text("🧾 영수증으로 한 번에 기록")
             }
             Spacer(Modifier.height(8.dp))
         }
@@ -361,6 +404,97 @@ private fun TrackedProductCard(item: TrackedProduct, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+    }
+}
+
+/** 영수증 확인: 매장·날짜 + 상품 줄(체크·이름·가격 수정) + 한 번에 기록. */
+@Composable
+private fun ReceiptBody(
+    ui: AnalysisUi.ReceiptReady,
+    onRowChange: (Int, String?, String?, Boolean?) -> Unit,
+    onStoreChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Text("영수증 확인", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                listOfNotNull(
+                    ui.dateEpochDay?.let { "${formatEpochDay(it)} 영수증" } ?: "날짜를 못 읽어 오늘로 기록해요",
+                    "상품 ${ui.rows.size}개 인식",
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            StoreSection(
+                storeName = ui.storeName,
+                recentStores = ui.recentStores,
+                suggestions = emptyList(),
+                onStoreChange = onStoreChange,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "이름이나 가격이 틀리면 고치고, 기록하지 않을 줄은 체크를 해제하세요.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        items(ui.rows.size) { index ->
+            val row = ui.rows[index]
+            PetlingCard(modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = row.checked, onCheckedChange = { onRowChange(index, null, null, it) })
+                    Column(modifier = Modifier.weight(1f)) {
+                        OutlinedTextField(
+                            value = row.name,
+                            onValueChange = { onRowChange(index, it, null, null) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            enabled = row.checked,
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = row.priceText,
+                                onValueChange = { onRowChange(index, null, it, null) },
+                                modifier = Modifier.width(140.dp),
+                                singleLine = true,
+                                enabled = row.checked,
+                                suffix = { Text("원") },
+                                textStyle = MaterialTheme.typography.bodyMedium,
+                            )
+                            if (row.quantity > 1) {
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "× ${row.quantity} (낱개 가격으로 기록)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f), enabled = !ui.saving) { Text("취소") }
+                Button(
+                    onClick = onSave,
+                    enabled = ui.checkedCount > 0 && !ui.saving,
+                    modifier = Modifier.weight(2f),
+                ) { Text(if (ui.saving) "기록 중…" else "${ui.checkedCount}개 기록하기") }
+            }
+        }
     }
 }
 

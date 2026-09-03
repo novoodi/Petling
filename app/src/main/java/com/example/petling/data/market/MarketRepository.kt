@@ -174,6 +174,10 @@ class MarketRepository(
         return stores.firstOrNull { normalizeStoreName(it.name)?.startsWith(brand) == true }?.type
     }
 
+    /** 영수증 일괄 저장 시 매칭용 전체 상품(데이터 없으면 빈 목록). */
+    suspend fun allProductsForMatching(): List<MarketProductEntity> =
+        if (_state.value.hasData) marketDao.allProducts() else emptyList()
+
     /** 상품 상세용: 저장된 매핑의 중앙값 이력. */
     fun observeMedians(goodId: Long) = marketDao.observeMedians(goodId)
 

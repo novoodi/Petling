@@ -16,6 +16,10 @@ import com.example.petling.domain.price.PriceTagInfo
 import com.example.petling.domain.price.normalizeProductName
 import com.example.petling.domain.price.normalizeStoreName
 import com.example.petling.domain.price.previousFor
+import com.example.petling.domain.receipt.ReceiptDraft
+import com.example.petling.domain.receipt.ReceiptItem
+import com.example.petling.domain.receipt.ReceiptParser
+import com.example.petling.domain.market.MarketMatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
@@ -217,6 +221,55 @@ class PriceRepository(
         )
 
         return productId
+    }
+
+    /**
+     * 영수증 한 장 → 매장·날짜·상품 목록 초안. 이미지는 저장하지 않는다(결제 정보가 있을 수 있음).
+     * 결제·카드·승인 줄은 파서가 아예 상품으로 읽지 않는다.
+     */
+    suspend fun analyzeReceipt(uri: Uri): ReceiptDraft {
+        val ocrText = ocr.extract(uri)
+        return ReceiptParser.parse(ocrText, clock.today())
+    }
+
+    /**
+     * 영수증 상품들을 한 번에 기록한다(상품 upsert + 기록 insert, 사진 없음).
+     * 참가격 매칭이 확실한 상품은 매핑까지 저장해 시세 추이에 바로 점이 찍히게 한다.
+     * @return 기록된 건수
+     */
+    suspend fun saveReceipt(items: List<ReceiptItem>, storeName: String?, dateEpochDay: Long?): Int {
+        val now = clock.nowMillis()
+        val date = dateEpochDay ?: clock.today().toEpochDay()
+        val store = storeName?.trim()?.takeIf { normalizeStoreName(it) != null }
+        val marketProducts = runCatching { market.allProductsForMatching() }.getOrDefault(emptyList())
+        var saved = 0
+        for ((index, item) in items.withIndex()) {
+            val name = NanoNameGuard.stripVolumeTokens(item.name).ifBlank { item.name.trim() }
+            if (name.isBlank() || item.unitPriceWon <= 0) continue
+            val normalized = normalizeProductName(name)
+            val existing = priceDao.findByNormalizedName(normalized)
+            val productId = existing?.id ?: priceDao.insertProduct(
+                PriceProductEntity(
+                    name = name,
+                    normalizedName = normalized,
+                    createdAt = now + index,
+                    marketGoodId = MarketMatcher.match(name, null, null, marketProducts)
+                        .takeIf { it.confident }?.best?.product?.id,
+                ),
+            )
+            priceDao.insertEntry(
+                PriceEntryEntity(
+                    productId = productId,
+                    priceWon = item.unitPriceWon,
+                    storeName = store,
+                    dateEpochDay = date,
+                    // 같은 영수증 안의 순서를 보존(createdAt 정렬)
+                    createdAt = now + index,
+                ),
+            )
+            saved++
+        }
+        return saved
     }
 
     /** 분석을 저장하지 않고 버릴 때 저장해둔 이미지를 정리한다. */

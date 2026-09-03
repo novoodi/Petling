@@ -9,6 +9,8 @@ import com.example.petling.data.market.MarketRepository
 import com.example.petling.data.repository.PriceAnalysis
 import com.example.petling.data.repository.PriceRepository
 import com.example.petling.data.repository.TrackedProduct
+import com.example.petling.domain.receipt.ReceiptDraft
+import com.example.petling.domain.receipt.ReceiptItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,7 +34,27 @@ sealed interface AnalysisUi {
         val storeSuggestions: List<String> = emptyList(),
         val requerying: Boolean = false,
     ) : AnalysisUi
+
+    /** 영수증 확인 화면: 파싱된 상품을 체크·수정해 한 번에 기록한다. */
+    data class ReceiptReady(
+        val draft: ReceiptDraft,
+        val rows: List<ReceiptRow>,
+        val storeName: String,
+        val recentStores: List<String> = emptyList(),
+        val dateEpochDay: Long?,
+        val saving: Boolean = false,
+    ) : AnalysisUi {
+        val checkedCount: Int get() = rows.count { it.checked && it.priceText.toIntOrNull() != null && it.name.isNotBlank() }
+    }
 }
+
+/** 영수증 상품 한 줄의 편집 상태. */
+data class ReceiptRow(
+    val name: String,
+    val priceText: String,
+    val quantity: Int,
+    val checked: Boolean = true,
+)
 
 class PriceViewModel(
     private val repository: PriceRepository,
@@ -80,6 +102,65 @@ class PriceViewModel(
                 storeName = store,
                 recentStores = recentStores,
             )
+        }
+    }
+
+    // ── 영수증
+
+    fun analyzeReceipt(uri: Uri, source: String) {
+        analytics.receiptStarted(source)
+        _analysis.value = AnalysisUi.Loading
+        viewModelScope.launch {
+            val draft = repository.analyzeReceipt(uri)
+            if (draft.isEmpty) {
+                _analysis.value = null
+                _message.value = "영수증에서 상품을 찾지 못했어요 — 영수증 전체가 밝고 반듯하게 나오게 다시 찍어주세요"
+                return@launch
+            }
+            val recent = repository.recentStores()
+            _analysis.value = AnalysisUi.ReceiptReady(
+                draft = draft,
+                rows = draft.items.map { ReceiptRow(it.name, it.unitPriceWon.toString(), it.quantity) },
+                storeName = draft.storeName ?: repository.defaultStoreForToday().orEmpty(),
+                recentStores = recent,
+                dateEpochDay = draft.dateEpochDay,
+            )
+        }
+    }
+
+    fun updateReceiptRow(index: Int, name: String? = null, priceText: String? = null, checked: Boolean? = null) {
+        val current = _analysis.value as? AnalysisUi.ReceiptReady ?: return
+        val row = current.rows.getOrNull(index) ?: return
+        val updated = row.copy(
+            name = name ?: row.name,
+            priceText = priceText?.filter { it.isDigit() }?.take(8) ?: row.priceText,
+            checked = checked ?: row.checked,
+        )
+        _analysis.value = current.copy(rows = current.rows.toMutableList().also { it[index] = updated })
+    }
+
+    fun updateReceiptStore(storeName: String) {
+        val current = _analysis.value as? AnalysisUi.ReceiptReady ?: return
+        _analysis.value = current.copy(storeName = storeName.take(40))
+    }
+
+    fun saveReceipt() {
+        val current = _analysis.value as? AnalysisUi.ReceiptReady ?: return
+        if (current.saving) return
+        val items = current.rows.filter { it.checked && it.name.isNotBlank() }.mapNotNull { r ->
+            val price = r.priceText.toIntOrNull() ?: return@mapNotNull null
+            if (price <= 0) null else ReceiptItem(r.name.trim(), price, r.quantity, price * r.quantity)
+        }
+        if (items.isEmpty()) {
+            _message.value = "기록할 상품을 하나 이상 체크해주세요"
+            return
+        }
+        _analysis.value = current.copy(saving = true)
+        viewModelScope.launch {
+            val saved = repository.saveReceipt(items, current.storeName.ifBlank { null }, current.dateEpochDay)
+            analytics.receiptSaved(saved, current.draft.items.size)
+            _analysis.value = null
+            _message.value = "영수증에서 ${saved}개 상품을 기록했어요"
         }
     }
 
@@ -171,6 +252,7 @@ class PriceViewModel(
         if (current is AnalysisUi.Ready) {
             viewModelScope.launch { repository.discard(current.analysis) }
         }
+        // ReceiptReady는 이미지를 저장하지 않으므로 정리할 것이 없다
         _analysis.value = null
     }
 

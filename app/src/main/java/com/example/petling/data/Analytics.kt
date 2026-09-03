@@ -27,6 +27,13 @@ class Analytics(context: Context) {
         putLong("has_store", if (hasStore) 1 else 0)
     }
 
+    /** 영수증 분석 시작 / 저장(건수만). */
+    fun receiptStarted(source: String) = log("receipt_start") { putString("source", source) }
+    fun receiptSaved(count: Int, parsedCount: Int) = log("receipt_saved") {
+        putLong("saved", count.toLong())
+        putLong("parsed", parsedCount.toLong())
+    }
+
     /** 시세 검색 실행(검색어는 보내지 않고 결과 수만). */
     fun marketSearched(resultCount: Int) = log("market_search") { putLong("results", resultCount.toLong()) }
 
