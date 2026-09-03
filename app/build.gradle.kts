@@ -106,6 +106,8 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.analytics)
+    // Play 인앱 업데이트(새 버전 안내). Play 설치 빌드에서만 동작
+    implementation(libs.play.app.update)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
