@@ -180,6 +180,48 @@ class MarketRepository(
     /** 시세 상세용: 이 참가격 상품에 매핑된 내 기록. */
     fun observeMyEntries(goodId: Long) = priceDao.observeEntriesForMarketGood(goodId)
 
+    /**
+     * 물가 개요: 대표 생필품의 최신 전체 중앙값과 직전 조사 대비 변동, 그리고 내린/오른 상품 TOP.
+     * 기록이 0건인 사용자에게도 "열면 바로 답"을 주기 위한 화면의 데이터. 조사일이 1개면 변동은 null.
+     */
+    suspend fun overview(topN: Int = 5): MarketOverview? {
+        if (!_state.value.hasData) return null
+        val days = marketDao.days()
+        val latestDay = days.lastOrNull() ?: return null
+        val prevDay = days.getOrNull(days.size - 2)
+        val rows = marketDao.mediansOfType("ALL", listOfNotNull(latestDay, prevDay))
+        val latest = rows.filter { it.day == latestDay }.associate { it.goodId to it.priceWon }
+        val prev = if (prevDay == null) emptyMap() else rows.filter { it.day == prevDay }.associate { it.goodId to it.priceWon }
+
+        fun changeOf(goodId: Long): MarketChange? {
+            val now = latest[goodId] ?: return null
+            val before = prev[goodId]
+            return MarketChange(now, before, before?.let { if (it > 0) (now - it) * 100.0 / it else null })
+        }
+
+        val staples = STAPLE_FRAGMENTS.mapNotNull { fragment ->
+            val p = marketDao.firstProductLike(fragment) ?: return@mapNotNull null
+            changeOf(p.id)?.let { MarketOverviewItem(p, it) }
+        }
+
+        val movers = if (prevDay == null) emptyList() else {
+            val products = marketDao.allProducts().associateBy { it.id }
+            latest.keys.mapNotNull { id ->
+                val c = changeOf(id) ?: return@mapNotNull null
+                val pct = c.changePct ?: return@mapNotNull null
+                val p = products[id] ?: return@mapNotNull null
+                if (kotlin.math.abs(pct) < 1.0) null else MarketOverviewItem(p, c)
+            }
+        }
+        return MarketOverview(
+            latestDay = latestDay,
+            previousDay = prevDay,
+            staples = staples,
+            down = movers.filter { (it.change.changePct ?: 0.0) < 0 }.sortedBy { it.change.changePct }.take(topN),
+            up = movers.filter { (it.change.changePct ?: 0.0) > 0 }.sortedByDescending { it.change.changePct }.take(topN),
+        )
+    }
+
     /** 시세 검색: 이름 부분 일치 + 최신 조사일의 전체/대형마트 중앙값. */
     suspend fun search(query: String, limit: Int = 40): List<MarketSearchItem> {
         val q = query.trim()
@@ -266,8 +308,27 @@ class MarketRepository(
         private const val KEY_PRODUCT_COUNT = "market_product_count"
 
         val TYPE_LABELS = mapOf("LM" to "대형마트", "SM" to "SSM", "DP" to "백화점", "CS" to "편의점", "ALL" to "전체")
+
+        /** 홈 "이번 주 시장 물가" 대표 상품 — 게시본 상품명의 부분 문자열로 고른다(id 하드코딩 회피). */
+        val STAPLE_FRAGMENTS = listOf(
+            "깨끗한 계란(15개)", "서울우유 흰우유(1L)", "신라면(5개입)", "이천쌀", "국산콩두부 찌개용",
+            "전주 콩나물", "해표 맑고 신선한 식용유", "백설 하얀설탕", "비비고 포기배추김치", "순수소프트 3겹 화장지",
+        )
     }
 }
+
+/** 최신 전체 중앙값과 직전 조사 대비 변동. [changePct]는 직전 조사가 없으면 null. */
+data class MarketChange(val nowWon: Int, val beforeWon: Int?, val changePct: Double?)
+
+data class MarketOverviewItem(val product: MarketProductEntity, val change: MarketChange)
+
+data class MarketOverview(
+    val latestDay: String,
+    val previousDay: String?,
+    val staples: List<MarketOverviewItem>,
+    val down: List<MarketOverviewItem>,
+    val up: List<MarketOverviewItem>,
+)
 
 /** 시세 검색 결과 한 줄. */
 data class MarketSearchItem(

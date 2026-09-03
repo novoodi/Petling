@@ -52,6 +52,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.petling.data.market.MarketInsight
+import com.example.petling.data.market.MarketOverview
 import com.example.petling.data.market.MarketRepository
 import com.example.petling.data.price.NanoState
 import com.example.petling.data.repository.TrackedProduct
@@ -87,15 +88,17 @@ internal fun formatMarketDay(day: String): String = runCatching {
  * 네이버 최저가·지난 방문 가격과 비교해 기록한다.
  */
 @Composable
-fun PriceScreen(onOpenProduct: (Long) -> Unit) {
+fun PriceScreen(onOpenProduct: (Long) -> Unit, onOpenMarket: () -> Unit, onOpenMarketProduct: (Long) -> Unit) {
     val container = appContainer()
     val vm: PriceViewModel = viewModel(
         factory = viewModelFactory {
-            initializer { PriceViewModel(container.priceRepository) }
+            initializer { PriceViewModel(container.priceRepository, container.marketRepository, container.analytics) }
         },
     )
     val context = LocalContext.current
+    LaunchedEffect(Unit) { container.analytics.screen("price_home") }
     val tracked by vm.tracked.collectAsStateWithLifecycle()
+    val overview by vm.overview.collectAsStateWithLifecycle()
     val analysis by vm.analysis.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
 
@@ -138,7 +141,7 @@ fun PriceScreen(onOpenProduct: (Long) -> Unit) {
         if (ok && uri != null) vm.analyze(uri)
     }
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) vm.analyze(uri)
+        if (uri != null) vm.analyze(uri, source = "album")
     }
 
     fun launchCamera() {
@@ -155,6 +158,12 @@ fun PriceScreen(onOpenProduct: (Long) -> Unit) {
         when (val a = analysis) {
             null -> TrackedList(
                 tracked = tracked,
+                overview = overview,
+                onOpenMarket = onOpenMarket,
+                onOpenMarketProduct = {
+                    container.analytics.marketProductOpened("home")
+                    onOpenMarketProduct(it)
+                },
                 onCamera = { launchCamera() },
                 onPick = {
                     pickLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -184,6 +193,9 @@ fun PriceScreen(onOpenProduct: (Long) -> Unit) {
 @Composable
 private fun TrackedList(
     tracked: List<TrackedProduct>,
+    overview: MarketOverview?,
+    onOpenMarket: () -> Unit,
+    onOpenMarketProduct: (Long) -> Unit,
     onCamera: () -> Unit,
     onPick: () -> Unit,
     onOpenProduct: (Long) -> Unit,
@@ -212,6 +224,10 @@ private fun TrackedList(
             }
             Spacer(Modifier.height(8.dp))
         }
+        // 기록이 0건이어도 볼 것: 이번 조사 시장 물가(참가격). 촬영 없이 열자마자 답이 있게.
+        overview?.let { ov ->
+            item { MarketOverviewCard(ov, onOpenMarket = onOpenMarket, onOpenProduct = onOpenMarketProduct) }
+        }
         if (tracked.isEmpty()) {
             item {
                 PetlingCard(modifier = Modifier.fillMaxWidth()) {
@@ -229,6 +245,59 @@ private fun TrackedList(
             TrackedProductCard(item, onClick = { onOpenProduct(item.product.id) })
         }
     }
+}
+
+/** 홈 상단 "이번 주 시장 물가": 대표 생필품 5개 + 직전 조사 대비 변동. */
+@Composable
+private fun MarketOverviewCard(ov: MarketOverview, onOpenMarket: () -> Unit, onOpenProduct: (Long) -> Unit) {
+    PetlingCard(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("🏷 이번 조사 시장 물가", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(
+                "${formatMarketDay(ov.latestDay)} 조사",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        ov.staples.take(5).forEach { item ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onOpenProduct(item.product.id) }.padding(vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    item.product.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(won(item.change.nowWon), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(6.dp))
+                ChangeBadge(item.change.changePct)
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (ov.previousDay == null) "전국 중앙값 · 다음 조사부터 오르내림이 표시돼요 · 시세 더 보기 ›"
+            else "전국 중앙값 · ${formatMarketDay(ov.previousDay)} 조사 대비 · 시세 더 보기 ›",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable(onClick = onOpenMarket),
+        )
+    }
+}
+
+/** ▲3% / ▼2% / – 배지. 직전 조사가 없으면 빈칸. */
+@Composable
+internal fun ChangeBadge(pct: Double?) {
+    val (text, color) = when {
+        pct == null -> "" to MaterialTheme.colorScheme.onSurfaceVariant
+        pct >= 1.0 -> "▲${pct.toInt()}%" to MaterialTheme.colorScheme.error
+        pct <= -1.0 -> "▼${(-pct).toInt()}%" to MaterialTheme.colorScheme.primary
+        else -> "–" to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(text, style = MaterialTheme.typography.labelMedium, color = color, modifier = Modifier.width(44.dp))
 }
 
 @Composable

@@ -61,7 +61,7 @@ fun SettingsScreen() {
     // AI(Gemini Nano) 상태 — 화면에 들어올 때마다 AICore에 다시 묻는다(시스템 업데이트로 바뀔 수 있음)
     val nano = container.priceTagExtractor
     val nanoState by nano.state.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { nano.refresh() }
+    LaunchedEffect(Unit) { nano.refresh(); container.analytics.screen("settings") }
 
     val market = container.marketRepository
     val marketState by market.state.collectAsStateWithLifecycle()

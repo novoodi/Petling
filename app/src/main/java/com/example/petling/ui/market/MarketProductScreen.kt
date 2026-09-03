@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +74,7 @@ fun MarketProductScreen(goodId: Long, onBack: () -> Unit) {
     val vm: MarketProductViewModel = viewModel(
         factory = viewModelFactory { initializer { MarketProductViewModel(container.marketRepository, goodId) } },
     )
+    LaunchedEffect(Unit) { container.analytics.screen("market_product") }
     val product by vm.product.collectAsStateWithLifecycle()
     val medians by vm.medians.collectAsStateWithLifecycle()
     val myEntries by vm.myEntries.collectAsStateWithLifecycle()

@@ -3,6 +3,9 @@ package com.example.petling.ui.price
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.petling.data.Analytics
+import com.example.petling.data.market.MarketOverview
+import com.example.petling.data.market.MarketRepository
 import com.example.petling.data.repository.PriceAnalysis
 import com.example.petling.data.repository.PriceRepository
 import com.example.petling.data.repository.TrackedProduct
@@ -31,11 +34,25 @@ sealed interface AnalysisUi {
     ) : AnalysisUi
 }
 
-class PriceViewModel(private val repository: PriceRepository) : ViewModel() {
+class PriceViewModel(
+    private val repository: PriceRepository,
+    private val market: MarketRepository,
+    private val analytics: Analytics,
+) : ViewModel() {
 
     val tracked: StateFlow<List<TrackedProduct>> =
         repository.observeTracked()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** 홈 상단 "이번 주 시장 물가" — 시장 데이터 동기화가 끝나면 다시 계산한다. */
+    private val _overview = MutableStateFlow<MarketOverview?>(null)
+    val overview: StateFlow<MarketOverview?> = _overview.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            market.state.collect { s -> if (s.hasData && !s.syncing) _overview.value = runCatching { market.overview() }.getOrNull() }
+        }
+    }
 
     private val _analysis = MutableStateFlow<AnalysisUi?>(null)
     val analysis: StateFlow<AnalysisUi?> = _analysis.asStateFlow()
@@ -49,7 +66,8 @@ class PriceViewModel(private val repository: PriceRepository) : ViewModel() {
     /** 매장 변경 시 비교 대상 재계산 — 연속 입력이면 이전 계산을 취소해 순서 꼬임을 막는다. */
     private var storeJob: Job? = null
 
-    fun analyze(uri: Uri) {
+    fun analyze(uri: Uri, source: String = "camera") {
+        analytics.analyzeStarted(source)
         _analysis.value = AnalysisUi.Loading
         viewModelScope.launch {
             val recentStores = repository.recentStores()
@@ -136,6 +154,10 @@ class PriceViewModel(private val repository: PriceRepository) : ViewModel() {
             )
             saving = false
             if (id != null) {
+                analytics.recordSaved(
+                    hasMarket = current.analysis.marketGoodId != null,
+                    hasStore = current.storeName.isNotBlank(),
+                )
                 _analysis.value = null
                 _message.value = "가격을 기록했어요"
             } else {

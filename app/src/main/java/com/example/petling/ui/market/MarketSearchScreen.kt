@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -19,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,10 +33,14 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.petling.data.Analytics
+import com.example.petling.data.market.MarketOverview
+import com.example.petling.data.market.MarketOverviewItem
 import com.example.petling.data.market.MarketRepository
 import com.example.petling.data.market.MarketSearchItem
 import com.example.petling.ui.appContainer
 import com.example.petling.ui.components.PetlingCard
+import com.example.petling.ui.price.ChangeBadge
 import com.example.petling.ui.price.formatMarketDay
 import com.example.petling.ui.price.won
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -45,9 +52,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
-class MarketSearchViewModel(private val market: MarketRepository) : ViewModel() {
+class MarketSearchViewModel(private val market: MarketRepository, private val analytics: Analytics) : ViewModel() {
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
@@ -56,8 +64,19 @@ class MarketSearchViewModel(private val market: MarketRepository) : ViewModel() 
 
     val results: StateFlow<List<MarketSearchItem>> =
         _query.debounce(150)
-            .mapLatest { q -> if (q.isBlank()) emptyList() else market.search(q) }
+            .mapLatest { q ->
+                if (q.isBlank()) emptyList() else market.search(q).also { analytics.marketSearched(it.size) }
+            }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _overview = MutableStateFlow<MarketOverview?>(null)
+    val overview: StateFlow<MarketOverview?> = _overview.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            market.state.collect { s -> if (s.hasData && !s.syncing) _overview.value = runCatching { market.overview(topN = 8) }.getOrNull() }
+        }
+    }
 
     fun setQuery(q: String) {
         _query.value = q.take(30)
@@ -69,11 +88,14 @@ class MarketSearchViewModel(private val market: MarketRepository) : ViewModel() 
 fun MarketSearchScreen(onOpenProduct: (Long) -> Unit) {
     val container = appContainer()
     val vm: MarketSearchViewModel = viewModel(
-        factory = viewModelFactory { initializer { MarketSearchViewModel(container.marketRepository) } },
+        factory = viewModelFactory { initializer { MarketSearchViewModel(container.marketRepository, container.analytics) } },
     )
+    LaunchedEffect(Unit) { container.analytics.screen("market_search") }
     val query by vm.query.collectAsStateWithLifecycle()
     val results by vm.results.collectAsStateWithLifecycle()
     val sync by vm.syncState.collectAsStateWithLifecycle()
+    val overview by vm.overview.collectAsStateWithLifecycle()
+    val open: (Long) -> Unit = { container.analytics.marketProductOpened("search"); onOpenProduct(it) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -116,6 +138,15 @@ fun MarketSearchScreen(onOpenProduct: (Long) -> Unit) {
                     }
                 }
             }
+            // 검색 전에도 볼 것: 이번 조사에서 내린/오른 상품(조사 2회분 이상일 때), 없으면 대표 생필품
+            overview?.let { ov ->
+                if (ov.down.isNotEmpty() || ov.up.isNotEmpty()) {
+                    item { MoversCard("📉 이번 조사에서 내린 상품", ov, ov.down, open) }
+                    item { MoversCard("📈 이번 조사에서 오른 상품", ov, ov.up, open) }
+                } else if (ov.staples.isNotEmpty()) {
+                    item { MoversCard("🧺 대표 생필품 전국 중앙값", ov, ov.staples, open) }
+                }
+            }
         } else if (results.isEmpty()) {
             item {
                 Text(
@@ -126,7 +157,7 @@ fun MarketSearchScreen(onOpenProduct: (Long) -> Unit) {
             }
         }
         items(results, key = { it.product.id }) { item ->
-            PetlingCard(modifier = Modifier.fillMaxWidth().clickable { onOpenProduct(item.product.id) }) {
+            PetlingCard(modifier = Modifier.fillMaxWidth().clickable { open(item.product.id) }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(item.product.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -141,6 +172,34 @@ fun MarketSearchScreen(onOpenProduct: (Long) -> Unit) {
                     }
                     Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+        }
+    }
+}
+
+/** 내린/오른/대표 상품 목록 카드. 한 줄 = 상품명 · 전체 중앙값 · 변동 배지. */
+@Composable
+private fun MoversCard(title: String, ov: MarketOverview, items: List<MarketOverviewItem>, onOpen: (Long) -> Unit) {
+    PetlingCard(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(
+                ov.previousDay?.let { "${formatMarketDay(it)} → ${formatMarketDay(ov.latestDay)}" } ?: "${formatMarketDay(ov.latestDay)} 조사",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        items.forEach { item ->
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onOpen(item.product.id) }.padding(vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(item.product.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1)
+                Spacer(Modifier.width(8.dp))
+                Text(won(item.change.nowWon), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(6.dp))
+                ChangeBadge(item.change.changePct)
             }
         }
     }

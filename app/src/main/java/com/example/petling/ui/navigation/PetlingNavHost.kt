@@ -62,6 +62,8 @@ fun PetlingNavHost(navController: NavHostController = rememberNavController()) {
             composable<PriceRoute> {
                 PriceScreen(
                     onOpenProduct = { navController.navigate(PriceProductRoute(it)) },
+                    onOpenMarket = { navigateTab(navController, MarketRoute) },
+                    onOpenMarketProduct = { navController.navigate(MarketProductRoute(it)) },
                 )
             }
             composable<PriceProductRoute> { entry ->

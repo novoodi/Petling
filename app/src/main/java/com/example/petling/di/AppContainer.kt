@@ -7,6 +7,7 @@ import com.example.petling.data.backup.BackupRepository
 import com.example.petling.data.capture.ImageStore
 import com.example.petling.data.capture.OcrTextExtractor
 import com.example.petling.data.local.Migrations
+import com.example.petling.data.Analytics
 import com.example.petling.data.local.PetlingDatabase
 import com.example.petling.data.market.MarketRepository
 import com.example.petling.data.price.GeminiNanoPriceTagExtractor
@@ -22,6 +23,9 @@ class AppContainer(context: Context) {
     private val appContext = context.applicationContext
 
     val clock: AppClock = SystemAppClock()
+
+    /** 베타 측정 이벤트(익명). 사용자 데이터는 보내지 않는다. */
+    val analytics = Analytics(appContext)
 
     val database: PetlingDatabase = Room.databaseBuilder(
         appContext,
